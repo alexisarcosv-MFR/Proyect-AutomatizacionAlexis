@@ -45,6 +45,11 @@ h1{font-size:24px;margin:0;font-weight:600;letter-spacing:-.01em}
 .card h3{margin:0 0 12px;font-size:14px;font-weight:600}
 .grid{display:grid;gap:16px}
 .kpis{grid-template-columns:repeat(4,1fr)}
+.kpis.k5{grid-template-columns:repeat(5,1fr)}
+.afilters{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}.afilters .field{margin:0}.afilters input,.afilters select{border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 10px;width:100%}
+.areports{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+.abar{display:grid;grid-template-columns:150px 1fr 30px;gap:9px;align-items:center;margin:8px 0;font-size:12.5px}.abar span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.atable{min-width:1300px;font-size:12.5px}.atable td{white-space:nowrap}.atable td:nth-child(13){white-space:normal}
 .kpi .n{font-size:28px;font-weight:600;margin-top:4px}
 .kpi .l{color:var(--muted);font-size:13px}
 .two{grid-template-columns:1.4fr 1fr}
@@ -134,13 +139,14 @@ a.join:hover{background:#4b4fb7}
 .chat-out{margin-top:10px;font-size:13.5px;white-space:pre-wrap;line-height:1.55}
 .empty{text-align:center;padding:40px 20px;color:var(--muted)}
 @media(max-width:1180px){.diag-wrap{grid-template-columns:150px 1fr}.diag-wrap .inspector{grid-column:1/-1}}
-@media(max-width:1000px){.kpis{grid-template-columns:repeat(2,1fr)}.two{grid-template-columns:1fr}}
+@media(max-width:1000px){.kpis,.kpis.k5{grid-template-columns:repeat(2,1fr)}.afilters{grid-template-columns:repeat(3,1fr)}.areports{grid-template-columns:1fr}.two{grid-template-columns:1fr}}
 @media(max-width:760px){
   body{display:block}
   aside{position:fixed;bottom:0;left:0;right:0;top:auto;height:auto;width:auto;flex-direction:row;padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:40}
   .brand,.side-foot{display:none}
   nav{display:flex;width:100%;justify-content:space-around}
-  nav a{flex-direction:column;gap:2px;font-size:10px;padding:6px 4px;margin:0}
+  nav a{flex-direction:column;gap:2px;font-size:9.5px;padding:6px 1px;margin:0;flex:1;min-width:0;text-align:center;overflow:hidden}
+  .afilters{grid-template-columns:1fr 1fr}
   nav a svg{width:20px;height:20px}
   nav .badge{position:absolute;top:0;right:2px;margin:0;font-size:10px;padding:0 5px}
   main{height:auto;min-height:100vh;padding:18px 14px 90px}
@@ -185,8 +191,8 @@ const fmt = iso => iso ? parseISO(iso).getDate()+' '+mon(iso) : '—';
 const daysTo = iso => Math.round((parseISO(iso) - TODAY)/86400000);
 
 // ============ Estado ============
-const S = {projects:{},tasks:{},meetings:{},diagrams:{},config:{},ics:{}};
-const KIND = {project:'projects',task:'tasks',meeting:'meetings',diagram:'diagrams',config:'config',ics:'ics'};
+const S = {projects:{},tasks:{},meetings:{},diagrams:{},config:{},ics:{},activities:{}};
+const KIND = {project:'projects',task:'tasks',meeting:'meetings',diagram:'diagrams',config:'config',ics:'ics',activity:'activities'};
 let DB = null, AI = null, MCP = null, DL = null, mode = 'loading', pending = false, dragging = false;
 const uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2,5);
 const projects = () => Object.values(S.projects).sort((a,b)=>a.id.localeCompare(b.id));
@@ -266,7 +272,8 @@ function dataContext(){
     hoy: isoOf(TODAY),
     proyectos: projects().map(p=>({id:p.id,nombre:p.name,area:p.client,estado:p.status,avance:p.progress,cierre:p.end})),
     pendientes: tasks().map(t=>({proyecto:t.project,tarea:t.text,responsable:t.owner,fecha:t.due,prioridad:t.prio,hecho:!!t.done,origen:t.origin})),
-    reuniones: meetings().map(m=>({proyecto:m.project,titulo:m.title,fecha:m.date,hora:m.time,resumen:m.summary||''}))
+    reuniones: meetings().map(m=>({proyecto:m.project,titulo:m.title,fecha:m.date,hora:m.time,resumen:m.summary||''})),
+    actividades: activities().sort((a,b)=>String(b.fechaApertura).localeCompare(String(a.fechaApertura))).slice(0,150).map(r=>({id:r.num,apertura:r.fechaApertura,cierre:r.fechaCierre,servicio:r.servicio,responsable:r.responsable,tecnologia:r.tecnologia,fabricante:r.fabricante,estado:r.estado,cliente:r.cliente,proyecto:r.proyecto,obs:String(r.observaciones||'').slice(0,160)}))
   });
 }
 
@@ -276,11 +283,12 @@ const ICON = {
   proyectos:'<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
   reuniones:'<path d="M4 5h16v11H8l-4 4z"/><path d="M8 9h8M8 12h5"/>',
   pendientes:'<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/>',
+  actividades:'<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M8.5 10h7M8.5 14h7M8.5 18h4"/>',
   calendario:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
   diagramas:'<rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-4h12v4"/>',
   reportes:'<path d="M5 20V10M12 20V4M19 20v-7"/>'
 };
-const VIEWS = [['dashboard','Inicio'],['proyectos','Proyectos'],['reuniones','Reuniones'],['pendientes','Pendientes'],['calendario','Agenda'],['diagramas','Diagramas'],['reportes','Reportes']];
+const VIEWS = [['dashboard','Inicio'],['proyectos','Proyectos'],['reuniones','Reuniones'],['pendientes','Pendientes'],['actividades','Actividades'],['calendario','Agenda'],['diagramas','Diagramas'],['reportes','Reportes']];
 let current = 'dashboard', openProject = null;
 function renderNav(){
   const od = overdue().length;
@@ -296,7 +304,7 @@ function syncLine(){ return `<div class="mob-sync sync ${mode==='cloud'?'on':mod
 function render(){
   renderNav(); const m=$('#main');
   if(mode==='loading'){ m.innerHTML = '<div class="empty">Cargando tus proyectos…</div>'; return; }
-  ({dashboard,proyectos,reuniones,pendientes,calendario,diagramas,reportes})[current](m);
+  ({dashboard,proyectos,reuniones,pendientes,actividades,calendario,diagramas,reportes})[current](m);
   m.insertAdjacentHTML('afterbegin', syncLine());
 }
 
@@ -311,11 +319,12 @@ function dashboard(m){
   <div class="top"><div><h1>${h<12?'Buenos días':h<20?'Buenas tardes':'Buenas noches'}, Alexis</h1><div class="sub">${TODAY.toLocaleDateString('es-CL',{weekday:'long',day:'numeric',month:'long'})}</div></div>
   <div style="display:flex;gap:6px"><button class="btn" id="qSet">⚙ Ajustes</button><button class="btn primary" id="qTask">+ Nuevo pendiente</button></div></div>
   ${!projects().length ? `<div class="card empty">Aún no hay proyectos. Crea el primero en <b>Proyectos</b>.</div>` : ''}
-  <div class="grid kpis">
+  <div class="grid kpis k5">
     <div class="card kpi"><div class="l">Proyectos activos</div><div class="n">${act.length}</div></div>
     <div class="card kpi"><div class="l">Avance promedio</div><div class="n">${avg}%</div></div>
     <div class="card kpi"><div class="l">Pendientes abiertos</div><div class="n">${open.length}</div></div>
     <div class="card kpi"><div class="l">Vencidos</div><div class="n" style="color:var(--warn)">${overdue().length}</div></div>
+    <div class="card kpi" style="cursor:pointer" id="kAct"><div class="l">Actividades en curso</div><div class="n" style="color:var(--amber)">${activities().filter(r=>r.estado==='En curso').length}</div></div>
   </div>
   <div class="grid two" style="margin-top:16px">
     <div class="card"><h3>Avance por proyecto</h3>
@@ -337,6 +346,7 @@ function dashboard(m){
   </div>`;
   $('#qTask').onclick = () => taskModal();
   $('#qSet').onclick = settingsModal;
+  $('#kAct').onclick = () => go('actividades');
   bindChecks();
   const ask = async () => {
     const q = $('#ask').value.trim(); if(!q) return; const out = $('#askOut');
@@ -379,6 +389,7 @@ function projectDetail(m,p){
      return `<div class="folder" ${f==='03_Diagramas'?'data-diag="1" style="cursor:pointer"':''}><svg viewBox="0 0 24 24"><path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><div>${f}<small>${n} archivo${n===1?'':'s'}</small></div></div>`}).join('')}</div></div>
   <div class="grid two" style="margin-top:16px">
     <div class="card"><h3>Pendientes (${ts.filter(t=>!t.done).length} abiertos)</h3>${taskList(ts)}</div>
+    <div class="card"><h3>Actividades (${activities().filter(r=>aMatchesProject(r,p)).length})</h3>${activities().filter(r=>aMatchesProject(r,p)).sort((a,b)=>String(b.fechaApertura).localeCompare(String(a.fechaApertura))).slice(0,8).map(r=>`<div class="list-item">${r.fechaApertura?chip(r.fechaApertura):''}<div style="flex:1">${esc(r.servicio)} · ${esc(r.tecnologia||'—')}<div class="muted" style="font-size:12px">#${r.num} · ${esc(r.responsable)} · ${esc(String(r.observaciones||'').slice(0,80))}</div></div>${aStatus(r.estado)}</div>`).join('')||'<div class="muted">Sin actividades. En Actividades, escribe el nombre de este proyecto en el campo Proyecto.</div>'}</div>
     <div class="card"><h3>Reuniones</h3>${ms.sort((a,b)=>b.date.localeCompare(a.date)).map(x=>`<div class="list-item">${chip(x.date)}<div><div>${esc(x.title)}</div><div class="muted" style="font-size:12px">${esc(x.summary||'Sin minuta aún')}</div></div></div>`).join('')||'<div class="muted">Sin reuniones</div>'}</div>
   </div>`;
   $('#back').onclick = () => { openProject=null; render(); };
@@ -1233,6 +1244,157 @@ function settingsModal(){
     for(const [k, ids] of Object.entries(SAMPLE_IDS)) for(const id of ids){ if(S[KIND[k]][id]) await del(k, id); }
     for(const t of tasks()) if(SAMPLE_IDS.project.includes(t.project) && !S.projects[t.project]) await del('task', t.id);
     toast('Datos de ejemplo borrados'); render(); });
+}
+
+// ============ Actividades (Seguimiento Área Soporte) ============
+const ALISTS = {
+  servicio:["Soporte a la Implementacion","Implementacion","Provisionamiento","Consultoria","Diseño","Arquitectura","Capacitacion","Certificaciones Partner","Upskilling tecnológico","Productos","Otro"],
+  solicitante:["Implementacion Tecnica","Diseño/Arquitectura","Preventa","Project Manager","Productos","Comercial","Otro"],
+  responsable:["Alexis Arcos","Oscar Pardo","Carlos Cortes","Camilo Aguilar","Cristian Soto"],
+  tecnologia:["Colaboracion","Wifi","SdWan","Seguridad Perimetral","SASE","Secure Lan","Networking","Otro"],
+  fabricante:["Fortinet","Cisco","Huawei","Aruba","Meraki","Otro"],
+  horario:["Horario laboral","Fuera de horario"],
+  estado:["En curso","Terminado"]
+};
+const AKEYS = ["num","fechaApertura","fechaCierre","horario","servicio","solicitante","responsable","tecnologia","fabricante","estado","cliente","proyecto","observaciones"];
+const AHEAD = ["ID","Fecha apertura","Fecha cierre","Tipo de horario","Servicio","Solicitante","Responsable","Tecnología","Fabricante","Estado","Cliente","Proyecto","Observaciones"];
+const activities = () => Object.values(S.activities);
+let aTab = 'registro';
+const aF = {desde:'', hasta:'', responsable:'', estado:'', tecnologia:'', q:''};
+function aFiltered(){
+  const q = aF.q.toLowerCase();
+  return activities().filter(r => (!aF.desde||r.fechaApertura>=aF.desde) && (!aF.hasta||r.fechaApertura<=aF.hasta) && (!aF.responsable||r.responsable===aF.responsable) && (!aF.estado||r.estado===aF.estado) && (!aF.tecnologia||r.tecnologia===aF.tecnologia) &&
+    (!q || [r.cliente,r.proyecto,r.observaciones,r.servicio,r.solicitante].join(' ').toLowerCase().includes(q)))
+    .sort((a,b)=>String(b.fechaApertura).localeCompare(String(a.fechaApertura)) || (b.num-a.num));
+}
+function aCounts(arr, key){ const m={}; arr.forEach(r=>{ const v=r[key]||'Sin especificar'; m[v]=(m[v]||0)+1; }); return Object.entries(m).sort((a,b)=>b[1]-a[1]); }
+const aNext = () => activities().reduce((mx,r)=>Math.max(mx, +r.num||0), 0) + 1;
+const aStatus = s => `<span class="pill ${s==='Terminado'?'p-ok':'p-amber'}">${esc(s)}</span>`;
+function aMatchesProject(r, p){ const t = String(r.proyecto||'').toLowerCase(); return !!t && (t===p.name.toLowerCase() || t.includes(p.id.toLowerCase()) || t===p.id.toLowerCase()); }
+function aOpts(list, sel, first){ return (first!==undefined?`<option value="">${first}</option>`:'') + list.map(v=>`<option ${sel===v?'selected':''}>${esc(v)}</option>`).join(''); }
+
+function actividades(m){
+  const arr = aFiltered(), all = activities();
+  const curso = arr.filter(r=>r.estado==='En curso').length, term = arr.filter(r=>r.estado==='Terminado').length, fuera = arr.filter(r=>r.horario==='Fuera de horario').length;
+  const filters = `<div class="card" style="margin-bottom:14px"><div class="afilters">
+    <div class="field"><label>Desde</label><input type="date" id="af_desde" value="${esc(aF.desde)}"></div>
+    <div class="field"><label>Hasta</label><input type="date" id="af_hasta" value="${esc(aF.hasta)}"></div>
+    <div class="field"><label>Responsable</label><select id="af_responsable">${aOpts(ALISTS.responsable, aF.responsable, 'Todos')}</select></div>
+    <div class="field"><label>Estado</label><select id="af_estado">${aOpts(ALISTS.estado, aF.estado, 'Todos')}</select></div>
+    <div class="field"><label>Tecnología</label><select id="af_tecnologia">${aOpts(ALISTS.tecnologia, aF.tecnologia, 'Todas')}</select></div>
+    <div class="field"><label>Buscar</label><input id="af_q" value="${esc(aF.q)}" placeholder="Cliente, proyecto…"></div>
+  </div></div>`;
+  let body = '';
+  if(aTab==='registro'){
+    body = mobile() ? `<div class="card">${arr.map(r=>`<div class="list-item" data-aed="${esc(r.id)}" style="cursor:pointer"><div class="date-chip">${r.fechaApertura?parseISO(r.fechaApertura).getDate():'—'}<small>${r.fechaApertura?mon(r.fechaApertura):''}</small></div><div style="flex:1"><div><b style="font-weight:500">${esc(r.servicio)}</b> · ${esc(r.cliente||'—')}</div><div class="muted" style="font-size:12px">#${r.num} · ${esc(r.responsable)} · ${esc(r.tecnologia||'—')} · ${esc(r.proyecto||'')}</div></div>${aStatus(r.estado)}</div>`).join('')||'<div class="empty">No hay actividades para mostrar.</div>'}</div>`
+    : `<div class="card tbl" style="padding:6px 8px"><table class="atable"><thead><tr>${AHEAD.map(h=>`<th>${h}</th>`).join('')}<th></th></tr></thead><tbody>
+      ${arr.map(r=>`<tr>${AKEYS.map(k=>k==='num'?`<td class="mono">${r.num}</td>`:k==='estado'?`<td>${aStatus(r.estado)}</td>`:k==='observaciones'?`<td style="min-width:220px">${esc(r[k])}</td>`:`<td>${esc(r[k])}</td>`).join('')}<td><button class="btn sm" data-aed="${esc(r.id)}">Editar</button></td></tr>`).join('') || `<tr><td colspan="14" class="empty">No hay actividades para mostrar.</td></tr>`}
+      </tbody></table></div>`;
+    body += `<div class="note">Mostrando ${arr.length} de ${all.length} actividades registradas · sincronizadas en tus dispositivos.</div>`;
+  } else {
+    const bars = (key, title) => { const c = aCounts(arr, key); return `<div><h3 style="font-size:13px;margin:0 0 8px">${title}</h3>${c.map(([n,v])=>`<div class="abar"><span title="${esc(n)}">${esc(n)}</span><div class="bar"><i style="width:${arr.length?100*v/arr.length:0}%"></i></div><b class="mono">${v}</b></div>`).join('')||'<div class="muted">Sin datos</div>'}</div>`; };
+    body = `<div class="grid kpis" style="margin-bottom:16px">
+      <div class="card kpi"><div class="l">Total de actividades</div><div class="n">${arr.length}</div></div>
+      <div class="card kpi"><div class="l">En curso</div><div class="n" style="color:var(--amber)">${curso}</div></div>
+      <div class="card kpi"><div class="l">Terminadas</div><div class="n" style="color:var(--ok)">${term}</div></div>
+      <div class="card kpi"><div class="l">Fuera de horario</div><div class="n">${fuera}</div></div></div>
+      <div class="card"><h3>Resumen de actividades</h3><div class="areports">${bars('servicio','Por servicio')}${bars('tecnologia','Por tecnología')}${bars('fabricante','Por fabricante')}${bars('responsable','Por responsable')}</div></div>
+      <div class="ai-box"><h4>✦ Análisis de Claude</h4><div class="chat-out" id="a_ai" style="margin-top:0">${AI?'Pídele a Claude un análisis de estas actividades para tu reporte.':'Claude se activa al abrir el portal desde claude.ai.'}</div>${AI?'<button class="btn sm" id="a_aibtn" style="margin-top:8px">Analizar</button>':''}</div>`;
+  }
+  m.innerHTML = `<div class="top"><div><h1>Actividades</h1><div class="sub">Registro de servicios · Área Soporte</div></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" id="a_imp">⇪ Importar Excel</button><button class="btn sm" id="a_xl">Excel</button><button class="btn sm" id="a_wd">Word</button><button class="btn primary" id="a_new">+ Nueva actividad</button></div></div>
+    <div class="toolbar"><button class="btn sm ${aTab==='registro'?'on':''}" data-atab="registro">Registros</button><button class="btn sm ${aTab==='reportes'?'on':''}" data-atab="reportes">Reportes</button></div>
+    ${filters}${body}`;
+  document.querySelectorAll('[data-atab]').forEach(b => b.onclick = () => { aTab=b.dataset.atab; render(); });
+  ['desde','hasta','responsable','estado','tecnologia'].forEach(k => { const el=$('#af_'+k); el.onchange = () => { aF[k]=el.value; render(); }; });
+  const qi = $('#af_q'); let qt; qi.oninput = () => { clearTimeout(qt); qt=setTimeout(()=>{ aF.q=qi.value; render(); const n=$('#af_q'); if(n){ n.focus(); n.setSelectionRange(n.value.length,n.value.length); } }, 300); };
+  document.querySelectorAll('[data-aed]').forEach(b => b.onclick = () => activityModal(S.activities[b.dataset.aed]));
+  $('#a_new').onclick = () => activityModal();
+  $('#a_xl').onclick = exportActivitiesXlsx;
+  $('#a_wd').onclick = exportActivitiesDocx;
+  $('#a_imp').onclick = importActivitiesXlsx;
+  const ab = $('#a_aibtn'); if(ab) ab.onclick = async () => { ab.disabled=true; const out=$('#a_ai'); out.textContent='Pensando…';
+    try{ await AI(`Analiza estas actividades del Área Soporte (ingeniería de redes, Chile) y entrega en español, breve y accionable: 1) resumen del período, 2) carga por responsable y tecnología, 3) actividades en curso que llevan más tiempo abiertas, 4) recomendaciones. Máximo 15 líneas. Hoy: ${isoOf(TODAY)}.\nDatos (filtrados): ${JSON.stringify(arr.slice(0,300).map(r=>({id:r.num,apertura:r.fechaApertura,cierre:r.fechaCierre,horario:r.horario,servicio:r.servicio,solicitante:r.solicitante,responsable:r.responsable,tecnologia:r.tecnologia,fabricante:r.fabricante,estado:r.estado,cliente:r.cliente,proyecto:r.proyecto,obs:String(r.observaciones||'').slice(0,200)})))}`,
+      {onText:({text})=>{ out.innerHTML = lightMd(text); }, cache:false}); }
+    catch(e){ out.textContent = 'No se pudo consultar a Claude.'; }
+    ab.disabled=false; };
+}
+function activityModal(r){
+  const isNew = !r; r = r || {fechaApertura:d(0), fechaCierre:'', horario:'Horario laboral', servicio:'', solicitante:'', responsable:'Alexis Arcos', tecnologia:'', fabricante:'', estado:'En curso', cliente:'', proyecto:'', observaciones:''};
+  modal(`<h3>${isNew?'Registrar nueva actividad':'Editar actividad #'+r.num}</h3>
+    <div class="frow"><div class="field"><label>Fecha apertura *</label><input type="date" id="ac_fa" value="${esc(r.fechaApertura)}"></div><div class="field"><label>Fecha cierre</label><input type="date" id="ac_fc" value="${esc(r.fechaCierre)}"></div></div>
+    <div class="frow"><div class="field"><label>Tipo de horario *</label><select id="ac_ho">${aOpts(ALISTS.horario, r.horario)}</select></div><div class="field"><label>Estado *</label><select id="ac_es">${aOpts(ALISTS.estado, r.estado)}</select></div></div>
+    <div class="frow"><div class="field"><label>Servicio *</label><select id="ac_se">${aOpts(ALISTS.servicio, r.servicio, 'Seleccionar…')}</select></div><div class="field"><label>Solicitante</label><select id="ac_so">${aOpts(ALISTS.solicitante, r.solicitante, 'Seleccionar…')}</select></div></div>
+    <div class="frow"><div class="field"><label>Responsable *</label><select id="ac_re">${aOpts(ALISTS.responsable.includes(r.responsable)||!r.responsable?ALISTS.responsable:[...ALISTS.responsable, r.responsable], r.responsable)}</select></div><div class="field"><label>Tecnología</label><select id="ac_te">${aOpts(ALISTS.tecnologia, r.tecnologia, 'Seleccionar…')}</select></div></div>
+    <div class="frow"><div class="field"><label>Fabricante</label><select id="ac_fb">${aOpts(ALISTS.fabricante, r.fabricante, 'Seleccionar…')}</select></div><div class="field"><label>Cliente</label><input id="ac_cl" maxlength="120" value="${esc(r.cliente)}" placeholder="Nombre del cliente"></div></div>
+    <div class="field"><label>Proyecto</label><input id="ac_pr" maxlength="160" list="ac_prl" value="${esc(r.proyecto)}" placeholder="Nombre del proyecto"><datalist id="ac_prl">${projects().map(p=>`<option value="${esc(p.name)}">${esc(p.id)}</option>`).join('')}</datalist></div>
+    <div class="field"><label>Observaciones</label><textarea id="ac_ob" rows="3" placeholder="Detalle, avances, acuerdos o próximos pasos…">${esc(r.observaciones)}</textarea></div>
+    <div id="ac_err" style="color:var(--warn);font-size:13px;margin-bottom:8px"></div>
+    <div style="display:flex;gap:8px;justify-content:space-between">${isNew?'<span></span>':'<button class="btn" id="ac_del" style="color:var(--warn)">Eliminar</button>'}<div style="display:flex;gap:8px"><button class="btn" data-close>Cancelar</button><button class="btn primary" id="ac_ok">${isNew?'Guardar actividad':'Guardar cambios'}</button></div></div>`);
+  $('#ac_ok').onclick = () => {
+    const v = {fechaApertura:$('#ac_fa').value, fechaCierre:$('#ac_fc').value, horario:$('#ac_ho').value, estado:$('#ac_es').value, servicio:$('#ac_se').value, solicitante:$('#ac_so').value, responsable:$('#ac_re').value, tecnologia:$('#ac_te').value, fabricante:$('#ac_fb').value, cliente:$('#ac_cl').value.trim(), proyecto:$('#ac_pr').value.trim(), observaciones:$('#ac_ob').value.trim()};
+    if(!v.fechaApertura || !v.horario || !v.servicio || !v.responsable || !v.estado){ $('#ac_err').textContent='Completa los campos con *.'; return; }
+    if(v.fechaCierre && v.fechaCierre < v.fechaApertura){ $('#ac_err').textContent='La fecha de cierre no puede ser anterior a la fecha de apertura.'; return; }
+    if(v.estado==='Terminado' && !v.fechaCierre) v.fechaCierre = d(0);
+    const num = isNew ? aNext() : r.num;
+    put('activity', {...r, ...v, id:r.id||('A'+num), num});
+    closeModal(); toast(isNew?'Actividad #'+num+' registrada':'Actividad actualizada'); render(); };
+  if(!isNew) $('#ac_del').onclick = () => confirmBox(`¿Eliminar la actividad #${r.num}?`, () => { del('activity', r.id); render(); toast('Actividad eliminada'); });
+}
+async function exportActivitiesXlsx(){
+  const all = activities().sort((a,b)=>a.num-b.num);
+  if(!all.length){ toast('No hay actividades para exportar'); return; }
+  try{
+    await lib('xlsx');
+    const ws = XLSX.utils.aoa_to_sheet([AHEAD, ...all.map(r=>AKEYS.map(k=>r[k]??''))]);
+    ws['!cols'] = [7,14,14,18,30,24,20,22,16,14,25,30,55].map(w=>({wch:w}));
+    const c = k => aCounts(all, k);
+    const summary = [["REPORTE DE ACTIVIDADES"],["Fecha de exportación",new Date().toLocaleString('es-CL')],["Total de actividades",all.length],["En curso",all.filter(r=>r.estado==='En curso').length],["Terminadas",all.filter(r=>r.estado==='Terminado').length],["Fuera de horario",all.filter(r=>r.horario==='Fuera de horario').length],[],["Distribución por servicio","Cantidad"],...c('servicio'),[],["Distribución por responsable","Cantidad"],...c('responsable'),[],["Distribución por tecnología","Cantidad"],...c('tecnologia'),[],["Distribución por fabricante","Cantidad"],...c('fabricante')];
+    const wr = XLSX.utils.aoa_to_sheet(summary); wr['!cols'] = [{wch:35},{wch:25}];
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Registro Servicios'); XLSX.utils.book_append_sheet(wb, wr, 'Resumen');
+    offerFile(`Seguimiento_Actividades_${stamp()}.xlsx`, new Uint8Array(XLSX.write(wb,{bookType:'xlsx',type:'array'})), {title:'Seguimiento de actividades en Excel'});
+  }catch(e){ toast('No se pudo generar el Excel'); }
+}
+async function exportActivitiesDocx(){
+  const arr = aFiltered(); if(!arr.length){ toast('No hay actividades con estos filtros'); return; }
+  const per = [aF.desde?'desde '+fmt(aF.desde):'', aF.hasta?'hasta '+fmt(aF.hasta):''].filter(Boolean).join(' ') || 'todas las fechas';
+  const tbl = (k, t) => [{h2:t},{table:[[t.replace('Por ',''),'Cantidad'], ...aCounts(arr,k).map(([n,v])=>[n,String(v)])]}];
+  try{
+    const u8 = await buildDocx([{h1:'Reporte de actividades · Área Soporte'},{sub:`${per}${aF.responsable?' · '+aF.responsable:''} · generado ${TODAY.toLocaleDateString('es-CL',{day:'numeric',month:'long',year:'numeric'})}`},
+      {h2:'Resumen'},{table:[['Total','En curso','Terminadas','Fuera de horario'],[String(arr.length), String(arr.filter(r=>r.estado==='En curso').length), String(arr.filter(r=>r.estado==='Terminado').length), String(arr.filter(r=>r.horario==='Fuera de horario').length)]]},
+      ...tbl('servicio','Por servicio'), ...tbl('tecnologia','Por tecnología'), ...tbl('responsable','Por responsable'),
+      {h2:'Detalle'},{table:[['ID','Apertura','Cierre','Servicio','Responsable','Tecnología','Estado','Cliente','Proyecto'], ...arr.map(r=>[String(r.num), r.fechaApertura||'', r.fechaCierre||'', r.servicio||'', r.responsable||'', r.tecnologia||'', r.estado||'', r.cliente||'', r.proyecto||''])]}]);
+    offerFile(`Reporte_Actividades_${stamp()}.docx`, u8, {title:'Reporte de actividades en Word'});
+  }catch(e){ toast('No se pudo generar el Word'); }
+}
+async function importActivitiesXlsx(){
+  const f = await pickFile('.xlsx,.xls,.csv'); if(!f) return;
+  try{
+    await lib('xlsx');
+    const wb = XLSX.read(await f.arrayBuffer(), {type:'array', cellDates:true});
+    const sn = wb.SheetNames.find(n=>/registro/i.test(n)) || wb.SheetNames[0];
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], {defval:''});
+    const norm = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+    const col = {}; AHEAD.forEach((h,i)=>col[norm(h)]=AKEYS[i]); col['tipo horario']='horario'; col['horario']='horario'; col['id']='num';
+    const dateOf = v => v instanceof Date ? isoOf(v) : /^\d{4}-\d{2}-\d{2}/.test(String(v)) ? String(v).slice(0,10) : (()=>{ const m=String(v).match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/); return m ? `${m[3].length===2?'20'+m[3]:m[3]}-${pad(m[2])}-${pad(m[1])}` : ''; })();
+    const existing = new Set(activities().map(r=>`${r.fechaApertura}|${r.servicio}|${r.cliente}|${r.proyecto}|${r.responsable}`));
+    let next = aNext(); const nuevos = []; let dup = 0;
+    rows.forEach(row => {
+      const r = {}; Object.keys(row).forEach(k => { const key = col[norm(k)]; if(key) r[key] = row[k]; });
+      if(!r.fechaApertura && !r.servicio) return;
+      r.fechaApertura = dateOf(r.fechaApertura); r.fechaCierre = dateOf(r.fechaCierre);
+      ['horario','servicio','solicitante','responsable','tecnologia','fabricante','estado','cliente','proyecto','observaciones'].forEach(k => r[k] = String(r[k]??'').trim());
+      if(!ALISTS.estado.includes(r.estado)) r.estado = r.fechaCierre ? 'Terminado' : 'En curso';
+      const key = `${r.fechaApertura}|${r.servicio}|${r.cliente}|${r.proyecto}|${r.responsable}`;
+      if(existing.has(key)){ dup++; return; } existing.add(key);
+      const num = next++; nuevos.push({...r, num, id:'A'+num, origen:f.name});
+    });
+    if(!nuevos.length){ toast(dup ? 'Todas las actividades de ese Excel ya estaban en el portal' : 'No encontré actividades en ese Excel'); return; }
+    modal(`<h3>Importar actividades</h3><p>Encontré <b>${nuevos.length}</b> actividad(es) nueva(s) en <i>${esc(f.name)}</i>${dup?` y ${dup} que ya estaban (se omiten)`:''}.</p>
+      <div class="note" style="margin:0 0 14px">Usa el Excel que genera tu planilla "Seguimiento de Actividades" (botón Exportar a Excel), hoja "Registro Servicios". Se les asigna un ID nuevo correlativo.</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" data-close>Cancelar</button><button class="btn primary" id="ai_ok">Importar ${nuevos.length}</button></div>`);
+    $('#ai_ok').onclick = async () => { $('#ai_ok').disabled = true; $('#ai_ok').textContent='Importando…'; for(const a of nuevos) await put('activity', a); closeModal(); toast(`${nuevos.length} actividades importadas`); render(); };
+  }catch(e){ toast('No pude leer ese Excel'); }
 }
 
 // ============ Modal ============

@@ -20,6 +20,7 @@ Portal personal para gestionar proyectos de redes/TI: proyectos con carpetas, re
 - **Inicio:** indicadores, avance por proyecto, próximas reuniones, pendientes urgentes y "Pregúntale a Claude".
 - **Proyectos:** ficha por proyecto con estado, avance, carpetas estándar (01_Gestion … 06_Entregables), pendientes y reuniones.
 - **Reuniones:** importa una reunión desde Fireflies (o pega/sube un .txt/.vtt) y Claude arma la minuta: resumen, acuerdos, riesgos y pendientes con responsable y plazo.
+- **Actividades:** registro de servicios del Área Soporte (apertura/cierre, horario, servicio, solicitante, responsable, tecnología, fabricante, estado, cliente, proyecto, observaciones), con filtros, reportes por servicio/tecnología/fabricante/responsable, análisis de Claude, exportación a Excel (mismo formato que la planilla original) y Word, e importación desde el Excel de la planilla anterior. Cada actividad aparece en la ficha de su proyecto.
 - **Pendientes:** lista filtrable por proyecto y estado; cada pendiente guarda su origen (reunión o manual).
 - **Agenda:** semana con reuniones del portal, vencimientos y eventos de Outlook; puede crear el evento también en Outlook.
 - **Diagramas:** equipos (hostname, modelo, IP), enlaces con interfaz A/B, velocidad, medio, VLAN, % de uso y sentido; tráfico animado, trazado de ruta entre equipos y tabla de interfaces copiable. Claude puede agregar equipos y enlaces desde una descripción.
