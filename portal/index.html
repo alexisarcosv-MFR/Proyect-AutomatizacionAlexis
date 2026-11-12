@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Portal de Proyectos · Prototipo</title>
+<title>Portal de Proyectos</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -90,6 +90,13 @@ textarea.transcript{width:100%;min-height:170px;border:1px solid var(--line);bor
 .ev.meet{background:var(--accent-soft);border-color:var(--accent)}
 .ev.task{background:var(--amber-soft);border-color:var(--amber)}
 .ev.ol{background:var(--blue-soft);border-color:var(--blue)}
+.ev.tm{background:#f1eefb;border-color:#6b46c1}
+.ev a.join{position:absolute;right:4px;bottom:3px;padding:1px 6px;font-size:11px}
+a.join{background:#5b5fc7;border-color:#5b5fc7;color:#fff;text-decoration:none}
+a.join:hover{background:#4b4fb7}
+.zoom{display:flex;gap:4px;align-items:center;justify-content:flex-end;margin-top:6px}
+.foot-btn{margin-top:10px;background:transparent;border:1px solid #2c4038;color:var(--side-ink);border-radius:8px;padding:6px 10px;cursor:pointer;width:100%;text-align:left}
+.foot-btn:hover{background:#1f2e29}
 .legend{display:flex;gap:14px;font-size:12px;color:var(--muted);margin-top:10px;flex-wrap:wrap}
 .legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px;background:var(--c)}
 /* diagram */
@@ -158,7 +165,7 @@ textarea.transcript{width:100%;min-height:170px;border:1px solid var(--line);bor
 <aside>
   <div class="brand"><div class="dot">PP</div>Portal de Proyectos</div>
   <nav id="nav"></nav>
-  <div class="side-foot"><div class="sync" id="sync"><i></i><span>Conectando…</span></div><div id="syncNote" class="muted" style="margin-top:4px"></div></div>
+  <div class="side-foot"><div class="sync" id="sync"><i></i><span>Conectando…</span></div><div id="syncNote" class="muted" style="margin-top:4px"></div><button class="foot-btn" id="setBtn">⚙ Ajustes y accesos</button></div>
 </aside>
 
 <main id="main"></main>
@@ -178,9 +185,9 @@ const fmt = iso => iso ? parseISO(iso).getDate()+' '+mon(iso) : '—';
 const daysTo = iso => Math.round((parseISO(iso) - TODAY)/86400000);
 
 // ============ Estado ============
-const S = {projects:{},tasks:{},meetings:{},diagrams:{}};
-const KIND = {project:'projects',task:'tasks',meeting:'meetings',diagram:'diagrams'};
-let DB = null, AI = null, MCP = null, mode = 'loading', pending = false, dragging = false;
+const S = {projects:{},tasks:{},meetings:{},diagrams:{},config:{},ics:{}};
+const KIND = {project:'projects',task:'tasks',meeting:'meetings',diagram:'diagrams',config:'config',ics:'ics'};
+let DB = null, AI = null, MCP = null, DL = null, mode = 'loading', pending = false, dragging = false;
 const uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2,5);
 const projects = () => Object.values(S.projects).sort((a,b)=>a.id.localeCompare(b.id));
 const tasks = () => Object.values(S.tasks);
@@ -215,6 +222,7 @@ function setSync(state, note){
 async function initData(){
   const use = n => (window.claude && typeof window.claude.use==='function') ? window.claude.use(n).catch(()=>null) : Promise.resolve(null);
   use('sample').then(s => { AI = s; if(s) render(); });
+  use('downloads').then(x => { DL = x; });
   use('mcp').then(m => { MCP = m; if(m && (current==='calendario'||current==='reuniones')) render(); });
   DB = await use('db');
   if(!DB){ return goLocal('Abre el portal desde claude.ai (PC o celular) para sincronizar.'); }
@@ -279,6 +287,7 @@ function renderNav(){
   $('#nav').innerHTML = VIEWS.map(([k,l]) =>
     `<a data-v="${k}" class="${current===k?'active':''}"><svg viewBox="0 0 24 24">${ICON[k]}</svg>${l}${k==='pendientes'&&od?`<span class="badge">${od}</span>`:''}</a>`).join('');
   document.querySelectorAll('#nav a').forEach(a => a.onclick = () => go(a.dataset.v));
+  const sb=document.getElementById('setBtn'); if(sb) sb.onclick = settingsModal;
 }
 function go(v){ current=v; if(v!=='proyectos') openProject=null; try{ location.hash = v; }catch(e){} render(); }
 window.addEventListener('hashchange', () => { const h=location.hash.slice(1); if(VIEWS.some(v=>v[0]===h) && h!==current){ current=h; render(); }});
@@ -295,12 +304,12 @@ function render(){
 function dashboard(m){
   const act = projects().filter(p=>p.status!=='Cerrado');
   const open = tasks().filter(t=>!t.done);
-  const upcoming = meetings().filter(x=>daysTo(x.date)>=0).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time)).slice(0,4);
+  const upcoming = [...meetings(), ...icsEvents().map(e=>({...e, project:'Teams/Outlook'}))].filter(x=>daysTo(x.date)>=0 && !(x.date===isoOf(TODAY) && x.time && x.time < `${pad(new Date().getHours())}:${pad(new Date().getMinutes())}`)).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time)).slice(0,5);
   const avg = Math.round(act.reduce((s,p)=>s+(+p.progress||0),0)/(act.length||1));
   const h = new Date().getHours();
   m.innerHTML = `
   <div class="top"><div><h1>${h<12?'Buenos días':h<20?'Buenas tardes':'Buenas noches'}, Alexis</h1><div class="sub">${TODAY.toLocaleDateString('es-CL',{weekday:'long',day:'numeric',month:'long'})}</div></div>
-  <button class="btn primary" id="qTask">+ Nuevo pendiente</button></div>
+  <div style="display:flex;gap:6px"><button class="btn" id="qSet">⚙ Ajustes</button><button class="btn primary" id="qTask">+ Nuevo pendiente</button></div></div>
   ${!projects().length ? `<div class="card empty">Aún no hay proyectos. Crea el primero en <b>Proyectos</b>.</div>` : ''}
   <div class="grid kpis">
     <div class="card kpi"><div class="l">Proyectos activos</div><div class="n">${act.length}</div></div>
@@ -314,7 +323,7 @@ function dashboard(m){
     </div>
     <div class="grid" style="align-content:start">
       <div class="card"><h3>Próximas reuniones</h3>
-        ${upcoming.map(x=>`<div class="list-item">${chip(x.date)}<div><div>${esc(x.title)}</div><div class="muted" style="font-size:12px">${esc(x.time)} · ${esc(x.project)}</div></div></div>`).join('') || '<div class="muted">Sin reuniones agendadas</div>'}
+        ${upcoming.map(x=>`<div class="list-item">${chip(x.date, x.project==='Teams/Outlook'?'ol':'')}<div style="flex:1"><div>${esc(x.title)}</div><div class="muted" style="font-size:12px">${esc(x.time||'Todo el día')} · ${esc(x.project)}</div></div>${joinBtn(x.join,true)}</div>`).join('') || '<div class="muted">Sin reuniones agendadas</div>'}
       </div>
       <div class="card"><h3>Pendientes urgentes</h3>
         ${open.filter(t=>t.due && daysTo(t.due)<=3).sort((a,b)=>a.due.localeCompare(b.due)).map(t=>`<div class="list-item"><div class="chk" data-t="${esc(t.id)}"></div><div style="flex:1">${esc(t.text)}<div class="muted" style="font-size:12px">${esc(t.project)} · ${esc(t.owner)}</div></div>${duePill(t)}</div>`).join('') || '<div class="muted">Nada urgente 🎉</div>'}
@@ -327,6 +336,7 @@ function dashboard(m){
     ${AI ? '' : aiOff()}
   </div>`;
   $('#qTask').onclick = () => taskModal();
+  $('#qSet').onclick = settingsModal;
   bindChecks();
   const ask = async () => {
     const q = $('#ask').value.trim(); if(!q) return; const out = $('#askOut');
@@ -402,7 +412,7 @@ function taskList(ts){
 function bindChecks(){ document.querySelectorAll('.chk').forEach(c => c.onclick = e => { e.stopPropagation(); const t=S.tasks[c.dataset.t]; if(!t) return; put('task',{...t, done:!t.done}); render(); }); }
 function pendientes(m){
   let ts = tasks().filter(t=>(!tFilter.project||t.project===tFilter.project) && (tFilter.state==='todos'||(tFilter.state==='abiertos'?!t.done:t.done)));
-  m.innerHTML = `<div class="top"><div><h1>Pendientes</h1><div class="sub">Lo que sale de cada reunión llega aquí con su origen</div></div><button class="btn primary" id="nt">+ Nuevo pendiente</button></div>
+  m.innerHTML = `<div class="top"><div><h1>Pendientes</h1><div class="sub">Lo que sale de cada reunión llega aquí con su origen</div></div><div style="display:flex;gap:6px"><button class="btn" id="txl">Excel</button><button class="btn primary" id="nt">+ Nuevo pendiente</button></div></div>
   <div class="toolbar"><select id="fp"><option value="">Todos los proyectos</option>${projOptions(tFilter.project)}</select>
   <select id="fs">${['abiertos','cerrados','todos'].map(s=>`<option ${tFilter.state===s?'selected':''}>${s}</option>`).join('')}</select></div>
   <div class="card tbl" style="padding:6px 8px">${mobile() ? taskList(ts) : `<table><thead><tr><th style="width:30px"></th><th>Pendiente</th><th>Proyecto</th><th>Responsable</th><th>Prioridad</th><th>Origen</th><th>Fecha</th><th></th></tr></thead><tbody>
@@ -411,6 +421,7 @@ function pendientes(m){
   $('#fp').onchange = e => { tFilter.project=e.target.value; render(); };
   $('#fs').onchange = e => { tFilter.state=e.target.value; render(); };
   $('#nt').onclick = () => taskModal();
+  $('#txl').onclick = () => exportXlsx('pendientes','Pendientes');
   document.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => taskModal(S.tasks[b.dataset.edit]));
   bindChecks();
 }
@@ -445,11 +456,12 @@ function reuniones(m){
       <div id="m_out"></div>
       ${AI ? '' : aiOff()}
     </div>
-    <div class="card"><h3>Historial</h3>${list.map(x=>`<div class="list-item">${chip(x.date)}<div style="flex:1"><div>${esc(x.title)} <span class="muted mono" style="font-size:12px">${esc(x.project)}</span></div><div class="muted" style="font-size:12px">${esc(x.summary || (daysTo(x.date)>=0?'Programada · '+x.time:'Sin minuta'))}</div></div></div>`).join('') || '<div class="muted">Sin reuniones</div>'}</div>
+    <div class="card"><h3>Historial</h3>${list.map(x=>`<div class="list-item">${chip(x.date)}<div style="flex:1"><div>${esc(x.title)} <span class="muted mono" style="font-size:12px">${esc(x.project)}</span></div><div class="muted" style="font-size:12px">${esc(x.summary || (daysTo(x.date)>=0?'Programada · '+x.time:'Sin minuta'))}</div></div>${x.summary?`<button class="btn sm" data-word="${esc(x.id)}">Word</button>`:''}</div>`).join('') || '<div class="muted">Sin reuniones</div>'}</div>
   </div>`;
   $('#m_f').onchange = e => { const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ $('#m_txt').value=r.result; if(!$('#m_t').value) $('#m_t').value=f.name.replace(/\.[^.]+$/,''); }; r.readAsText(f); };
   $('#m_go').onclick = analyze;
   bindFF();
+  document.querySelectorAll('[data-word]').forEach(b => b.onclick = async () => { const mt=S.meetings[b.dataset.word]; if(!mt) return; try{ const u8=await minutaDocx(mt); offerFile(`Minuta_${mt.project}_${safeName(mt.title)}_${mt.date}.docx`, u8, {title:'Minuta en Word'}); }catch(e){ toast('No se pudo generar el Word'); } });
 }
 
 // ---- Fireflies ----
@@ -547,10 +559,12 @@ ${txt.slice(0,60000)}`, {modelTier:'default'});
    <b>Riesgos</b><ul>${r.riesgos.map(a=>`<li>${esc(a)}</li>`).join('')||'<li class="muted">Ninguno detectado</li>'}</ul>
    <b>Pendientes propuestos</b><ul>${r.pendientes.map(a=>`<li>${esc(a.texto)} — <i>${esc(a.responsable)}</i> <span class="muted">(${fmt(d(+a.dias||7))})</span></li>`).join('')||'<li class="muted">Ninguno detectado</li>'}</ul>
    <button class="btn primary sm" id="m_save">Guardar minuta y crear ${r.pendientes.length} pendientes</button></div>`;
-  $('#m_save').onclick = async () => { const a=lastAnalysis; if(!a) return; lastAnalysis=null; const lbl='Reunión '+fmt(d(0));
-    for(const x of a.pendientes) await put('task',{id:uid('t'),project:a.project,text:String(x.texto||'').replace(/^\w/,c=>c.toUpperCase()),owner:x.responsable||'Por asignar',due:d(+x.dias||7),prio:'Media',done:false,origin:lbl});
-    await put('meeting',{id:uid('m'),project:a.project,title:a.title,date:d(0),time:'—',summary:a.resumen||a.acuerdos[0]||'Minuta guardada',agreements:a.acuerdos,risks:a.riesgos});
-    toast(a.pendientes.length+' pendientes creados'); render(); };
+  $('#m_save').onclick = async () => { const a=lastAnalysis; if(!a) return; lastAnalysis=null; const lbl='Reunión '+fmt(d(0)); const mid=uid('m');
+    for(const x of a.pendientes) await put('task',{id:uid('t'),meetingId:mid,project:a.project,text:String(x.texto||'').replace(/^\w/,c=>c.toUpperCase()),owner:x.responsable||'Por asignar',due:d(+x.dias||7),prio:'Media',done:false,origin:lbl});
+    const mt={id:mid,project:a.project,title:a.title,date:d(0),time:'—',summary:a.resumen||a.acuerdos[0]||'Minuta guardada',agreements:a.acuerdos,risks:a.riesgos,actions:a.pendientes.map(x=>({texto:x.texto,responsable:x.responsable,fecha:d(+x.dias||7)}))};
+    await put('meeting',mt);
+    toast(a.pendientes.length+' pendientes creados'); render();
+    try{ const u8=await minutaDocx(mt); offerFile(`Minuta_${mt.project}_${safeName(mt.title)}_${mt.date}.docx`, u8, {title:'Minuta guardada · ¿la quieres en Word?'}); }catch(e){} };
 }
 
 // ============ Agenda / Calendario ============
@@ -570,7 +584,7 @@ function watchOutlook(days){
   try{
     olWatch = MCP.watchTool('Microsoft 365','outlook_calendar_search',{query:'*',afterDateTime:after,beforeDateTime:before,limit:25,order:'oldest'}, ev => {
       if(ev.type==='data'){
-        olEvents = findEvents(ev.result.payload).map(e=>{ const s=String((e.start&&e.start.dateTime)||e.start||''); return {title:e.subject||e.title, date:s.slice(0,10), time:s.slice(11,16)}; }).filter(e=>/^\d{4}-\d{2}-\d{2}$/.test(e.date));
+        olEvents = findEvents(ev.result.payload).map(e=>{ const s=String((e.start&&e.start.dateTime)||e.start||''); return {title:e.subject||e.title, date:s.slice(0,10), time:s.slice(11,16), join:(e.onlineMeeting&&e.onlineMeeting.joinUrl)||(JSON.stringify(e).match(TEAMS_RE)||[])[0]||''}; }).filter(e=>/^\d{4}-\d{2}-\d{2}$/.test(e.date));
         olState='ok';
       } else {
         const c = ev.error && ev.error.code;
@@ -591,14 +605,15 @@ function calendario(m){
   const hours = [...Array(11)].map((_,i)=>8+i);
   const evAt = (dayIso) => [
     ...meetings().filter(e=>e.date===dayIso).map(e=>({...e,cls:'meet'})),
-    ...olEvents.filter(e=>e.date===dayIso).map(e=>({...e,cls:'ol',project:'Outlook'}))];
-  let head = `<div class="top"><div><h1>Agenda</h1><div class="sub">Reuniones del portal, vencimientos y tu Outlook</div></div>
-  <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" id="wp">←</button><button class="btn sm" id="wt">Hoy</button><button class="btn sm" id="wn">→</button><button class="btn primary sm" id="wa">+ Agendar</button></div></div>`;
+    ...olEvents.filter(e=>e.date===dayIso).map(e=>({...e,cls:'ol',project:'Outlook'})),
+    ...icsEvents().filter(e=>e.date===dayIso && !olEvents.some(o=>o.date===e.date&&o.time===e.time&&o.title===e.title)).map(e=>({...e,cls:'tm',project:e.join?'Teams':'Outlook trabajo'}))];
+  let head = `<div class="top"><div><h1>Agenda</h1><div class="sub">Reuniones del portal, vencimientos, Outlook y Teams</div></div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" id="wp">←</button><button class="btn sm" id="wt">Hoy</button><button class="btn sm" id="wn">→</button><button class="btn sm" id="wics">⟳ Importar agenda Teams (.ics)</button><button class="btn primary sm" id="wa">+ Agendar</button></div></div>`;
   let body = '';
   if(mobile()){
     body = days.map(x=>{ const di=isoOf(x); const evs=evAt(di).sort((a,b)=>String(a.time).localeCompare(String(b.time))); const tks=tasks().filter(t=>!t.done&&t.due===di);
       return `<div class="card" style="margin-bottom:10px"><h3 style="${di===isoOf(TODAY)?'color:var(--accent)':''}">${x.toLocaleDateString('es-CL',{weekday:'long',day:'numeric',month:'short'})}</h3>
-      ${evs.map(e=>`<div class="list-item"><span class="pill ${e.cls==='ol'?'p-blue':'p-acc'}">${esc(e.time||'—')}</span><div>${esc(e.title)}<div class="muted" style="font-size:12px">${esc(e.project)}</div></div></div>`).join('')}
+      ${evs.map(e=>`<div class="list-item"><span class="pill ${e.cls==='ol'?'p-blue':e.cls==='tm'?'p-grey':'p-acc'}">${esc(e.time||'Día')}</span><div style="flex:1">${esc(e.title)}<div class="muted" style="font-size:12px">${esc(e.project)}</div></div>${joinBtn(e.join,true)}</div>`).join('')}
       ${tks.map(t=>`<div class="list-item"><span class="pill p-amber">⚑</span><div>${esc(t.text)}<div class="muted" style="font-size:12px">${esc(t.project)}</div></div></div>`).join('')}
       ${!evs.length&&!tks.length?'<div class="muted">Libre</div>':''}</div>`; }).join('');
   } else {
@@ -607,17 +622,18 @@ function calendario(m){
       body += `<div class="t">${h}:00</div>`;
       days.forEach(x => {
         const di = isoOf(x);
-        const evs = evAt(di).filter(e=>parseInt(e.time)===h);
+        const evs = evAt(di).filter(e=>parseInt(e.time)===h || (h===8 && (!e.time || parseInt(e.time)<8)));
         const tks = h===8 ? tasks().filter(t=>!t.done && t.due===di) : [];
-        body += `<div class="c">${evs.map((e,i)=>{const mm=parseInt(String(e.time).split(':')[1])||0;return `<div class="ev ${e.cls}" style="top:${mm/60*46+2+i*4}px;height:40px"><b>${esc(e.title)}</b><br><span class="muted">${esc(e.time)} · ${esc(e.project)}</span></div>`}).join('')}${tks.map((t,i)=>`<div class="ev task" style="top:${2+i*22}px;height:20px">⚑ ${esc(t.text)}</div>`).join('')}</div>`;
+        body += `<div class="c">${evs.map((e,i)=>{const mm=parseInt(String(e.time).split(':')[1])||0;return `<div class="ev ${e.cls}" style="top:${mm/60*46+2}px;height:${mm>=30?21:40}px;left:calc(${(i/evs.length*100).toFixed(2)}% + 3px);right:auto;width:calc(${(100/evs.length).toFixed(2)}% - 6px)" title="${esc(e.title)}"><b>${esc(e.title)}</b>${mm>=30?'':`<br><span class="muted">${esc(e.time||'Todo el día')} · ${esc(e.project)}</span>`}${e.join?`<a class="btn join" href="${esc(e.join)}" target="_blank" rel="noopener">Unirse</a>`:''}</div>`}).join('')}${tks.map((t,i)=>`<div class="ev task" style="top:${2+i*22}px;height:20px">⚑ ${esc(t.text)}</div>`).join('')}</div>`;
       });
     });
     body += '</div>';
   }
-  m.innerHTML = head + body + `<div class="legend"><span style="--c:var(--accent)">Reuniones del portal</span><span style="--c:var(--blue)">Outlook</span><span style="--c:var(--amber)">Vencimientos</span></div>` + olBanner();
+  m.innerHTML = head + body + `<div class="legend"><span style="--c:var(--accent)">Reuniones del portal</span><span style="--c:var(--blue)">Outlook</span><span style="--c:#6b46c1">Teams / Outlook trabajo (.ics)</span><span style="--c:var(--amber)">Vencimientos</span></div>` + olBanner();
   $('#wp').onclick=()=>{weekOffset--;render();}; $('#wn').onclick=()=>{weekOffset++;render();}; $('#wt').onclick=()=>{weekOffset=0;render();};
   const al = $('#olAllow'); if(al) al.onclick = async () => { try{ await MCP.callTool('Microsoft 365','outlook_calendar_search',{query:'*',afterDateTime:isoOf(days[0]),beforeDateTime:isoOf(days[4]),limit:25,order:'oldest'}); olKey=''; render(); }catch(e){ toast('Sigue sin permiso'); } };
   $('#wa').onclick = meetModal;
+  $('#wics').onclick = importICS;
 }
 function meetModal(){
   modal(`<h3>Agendar reunión</h3>
@@ -625,7 +641,7 @@ function meetModal(){
     <div class="field"><label>Proyecto</label><select id="e_p">${projOptions()}</select></div>
     <div class="frow"><div class="field"><label>Fecha</label><input type="date" id="e_d" value="${d(1)}"></div><div class="field"><label>Hora</label><input type="time" id="e_h" value="10:00"></div></div>
     <div class="field"><label>Duración</label><select id="e_dur"><option value="30">30 min</option><option value="60" selected>1 hora</option><option value="90">1 h 30</option></select></div>
-    ${MCP?'<label style="display:flex;gap:8px;align-items:center;margin-bottom:14px;font-size:13px"><input type="checkbox" id="e_ol" checked> Crear también en mi calendario de Outlook</label>':''}
+    ${MCP?'<label style="display:flex;gap:8px;align-items:center;margin-bottom:14px;font-size:13px"><input type="checkbox" id="e_ol" checked> Crear también en mi calendario de Outlook</label><label style="display:flex;gap:8px;align-items:center;margin-bottom:14px;font-size:13px"><input type="checkbox" id="e_tm"> Con enlace de reunión de Teams</label>':''}
     <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" data-close>Cancelar</button><button class="btn primary" id="e_ok">Agendar</button></div>`);
   $('#e_ok').onclick = async () => { const t=$('#e_t').value.trim(); if(!t) return;
     const date=$('#e_d').value, time=$('#e_h').value, dur=+$('#e_dur').value, proj=$('#e_p').value;
@@ -634,7 +650,7 @@ function meetModal(){
     if(toOl){
       const st = new Date(date+'T'+time); const en = new Date(st.getTime()+dur*60000);
       const loc = x => `${isoOf(x)}T${pad(x.getHours())}:${pad(x.getMinutes())}:00`;
-      try{ await MCP.callTool('Microsoft 365','outlook_create_event',{subject:`[${proj}] ${t}`,start:{dateTime:loc(st),timeZone:'America/Santiago'},end:{dateTime:loc(en),timeZone:'America/Santiago'}}); toast('Agendada en el portal y en Outlook'); MCP.invalidate('Microsoft 365','outlook_calendar_search').catch(()=>{}); }
+      try{ await MCP.callTool('Microsoft 365','outlook_create_event',{subject:`[${proj}] ${t}`,start:{dateTime:loc(st),timeZone:'America/Santiago'},end:{dateTime:loc(en),timeZone:'America/Santiago'}, ...($('#e_tm')&&$('#e_tm').checked?{isOnlineMeeting:true}:{})}); toast('Agendada en el portal y en Outlook'); MCP.invalidate('Microsoft 365','outlook_calendar_search').catch(()=>{}); }
       catch(e){ const c=e&&e.code; toast(c==='needs_reauth'?'Reconecta Microsoft 365 en claude.ai':c==='approval_required'?'Outlook necesita tu aprobación':c==='server_unavailable'||c==='upstream_error'?'Outlook no respondió: revisa si se creó antes de reintentar':'Guardada en el portal; no se pudo crear en Outlook'); }
     } else toast('Reunión agendada');
     closeModal(); render(); };
@@ -673,11 +689,11 @@ function diagramas(m){
   <div class="toolbar" style="margin:0"><select id="dp">${projOptions(diagProject)}</select>
   <button class="btn sm ${linkMode?'on':''}" id="dl">${linkMode?(linkFrom?'Elige el 2º equipo…':'Elige el 1er equipo…'):'⟷ Conectar'}</button>
   <button class="btn sm ${traffic?'on':''}" id="dt">${traffic?'⏸ Tráfico':'▶ Tráfico'}</button>
-  <button class="btn sm" id="dx">Copiar tabla de interfaces</button></div></div>
+  <button class="btn sm" id="dvi">⇪ Importar Visio</button><button class="btn sm" id="dex">Exportar</button></div></div>
   <div class="diag-wrap">
     <div class="palette">${Object.entries(SHAPES).map(([k,s])=>`<button class="ico" data-k="${k}"><svg viewBox="0 0 40 40">${s.svg}</svg>${s.n}</button>`).join('')}
       <div class="note">Toca un ícono para agregarlo. Arrastra para mover. Toca un equipo o enlace para editarlo.</div></div>
-    <div><svg id="canvas" viewBox="0 0 ${W} ${H}"></svg>
+    <div><svg id="canvas" viewBox="0 0 ${W} ${H}"></svg><div class="zoom"><span class="muted" style="font-size:12px;margin-right:auto">${dg.source?'Origen: '+esc(dg.source):''}</span><button class="btn sm" id="zo">−</button><span id="zv" class="mono" style="font-size:12px;width:44px;text-align:center">100%</span><button class="btn sm" id="zi">+</button><button class="btn sm" id="zr">Ajustar</button></div>
       <div class="ai-box"><h4>✦ Generar con Claude</h4><div class="chat" style="margin:0"><input id="dprompt" placeholder="Ej: agrega un servidor de monitoreo en Gi1/0/24 del Core-01 por 1G cobre"><button class="btn primary" id="dgen">Generar</button></div>${AI?'':aiOff()}</div>
     </div>
     <div class="inspector card" id="insp"></div>
@@ -690,7 +706,10 @@ function diagramas(m){
     dSel={kind:'node',id}; saveDiagram(dg); drawDiagram(); renderInspector(); });
   $('#dl').onclick = () => { linkMode=!linkMode; linkFrom=null; diagramas(m); };
   $('#dt').onclick = () => { traffic=!traffic; diagramas(m); };
-  $('#dx').onclick = async () => { const dg=getDiagram(diagProject); const N=Object.fromEntries(dg.nodes.map(n=>[n.id,n]));
+  $('#dvi').onclick = importVisio; $('#dex').onclick = exportDiagramMenu;
+  $('#zi').onclick=()=>{ zoom=Math.min(3,zoom*1.25); applyZoom(); }; $('#zo').onclick=()=>{ zoom=Math.max(.5,zoom/1.25); applyZoom(); }; $('#zr').onclick=()=>{ zoom=1; applyZoom(); };
+  applyZoom();
+  if(false) $('#dx').onclick = async () => { const dg=getDiagram(diagProject); const N=Object.fromEntries(dg.nodes.map(n=>[n.id,n]));
     const rows=['Equipo A\tInterfaz A\tEquipo B\tInterfaz B\tVelocidad\tMedio\tVLAN', ...dg.links.map(l=>[N[l.a]?.label,l.ifA,N[l.b]?.label,l.ifB,l.speed,l.media,l.vlan].map(x=>x||'').join('\t'))];
     try{ await navigator.clipboard.writeText(rows.join('\n')); toast('Tabla copiada: pégala en Excel o en un documento'); }catch(e){ toast('No se pudo copiar'); } };
   $('#dgen').onclick = genDiagram;
@@ -850,7 +869,7 @@ Usa nombres de interfaz realistas (Gi1/0/1, Te1/1/1, port1, etc.) si el pedido n
 let repText = '';
 function reportes(m){
   m.innerHTML = `<div class="top"><div><h1>Reportes de avance</h1><div class="sub">Se arma con los datos del portal · Claude lo redacta para tu jefatura</div></div>
-  <div class="toolbar" style="margin:0"><select id="rp"><option value="">Todos los proyectos</option>${projOptions()}</select>${AI?'<button class="btn sm" id="rai">✦ Redactar con Claude</button>':''}<button class="btn primary sm" id="rc">Copiar texto</button></div></div>
+  <div class="toolbar" style="margin:0"><select id="rp"><option value="">Todos los proyectos</option>${projOptions()}</select>${AI?'<button class="btn sm" id="rai">✦ Redactar con Claude</button>':''}<button class="btn sm" id="rc">Copiar</button><button class="btn sm" id="rxl">Excel</button><button class="btn primary sm" id="rwd">Word</button></div></div>
   <div class="report" id="rep"></div>`;
   const build = () => { const f=$('#rp').value; const ps=projects().filter(p=>p.status!=='Cerrado'&&(!f||p.id===f));
     const avg = Math.round(ps.reduce((s,p)=>s+(+p.progress||0),0)/(ps.length||1));
@@ -861,13 +880,359 @@ function reportes(m){
       ${od.length?'Vencidos: '+od.map(t=>esc(t.text)+' ('+esc(t.owner)+')').join('; ')+'.<br>':''}
       ${nx.length?'Próximos pasos: '+nx.map(t=>esc(t.text)).join('; ')+'.':'Sin próximos pasos registrados.'}</p>`}).join('')}`;
   };
-  build(); $('#rp').onchange = build;
+  build(); $('#rp').onchange = () => { repText=''; build(); };
+  $('#rxl').onclick = () => exportXlsx(null, 'Reporte-Avance');
+  $('#rwd').onclick = async () => { try{ const u8 = await buildDocx(repText ? aiTextBlocks(repText) : reportBlocks($('#rp').value)); offerFile(`Reporte_Avance_${stamp()}.docx`, u8, {title:'Reporte en Word'}); }catch(e){ toast('No se pudo generar el Word'); } };
   $('#rc').onclick = async () => { try{ await navigator.clipboard.writeText($('#rep').innerText); toast('Reporte copiado'); }catch(e){ toast('No se pudo copiar'); } };
   if($('#rai')) $('#rai').onclick = async () => { const btn=$('#rai'); btn.disabled=true; const f=$('#rp').value;
     try{ await AI(`Redacta en español un reporte semanal de avance para la jefatura de Alexis (ingeniero de redes, Chile). Tono profesional y directo. Estructura: Resumen ejecutivo (3 líneas), luego por proyecto: estado, avance, logros, riesgos/bloqueos y próximos pasos, y al final "Apoyo requerido" si corresponde. ${f?'Solo el proyecto '+f+'.':''} Usa únicamente estos datos:\n${dataContext()}`,
-      {onText:({text})=>{ $('#rep').innerHTML = `<div style="white-space:pre-wrap">${lightMd(text)}</div>`; }, cache:false}); toast('Reporte redactado por Claude'); }
+      {onText:({text})=>{ repText = text; $('#rep').innerHTML = `<div style="white-space:pre-wrap">${lightMd(text)}</div>`; }, cache:false}); toast('Reporte redactado por Claude · usa Word para descargarlo'); }
     catch(e){ toast('No se pudo redactar con Claude'); build(); }
     btn.disabled=false; };
+}
+
+// ============ Librerías bajo demanda ============
+const LIBS = {
+  zip:'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
+  xlsx:'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
+};
+const _libs = {};
+function lib(name){
+  if(!_libs[name]) _libs[name] = new Promise((ok, ko) => { const s=document.createElement('script'); s.src=LIBS[name]; s.onload=()=>ok(); s.onerror=()=>{ delete _libs[name]; ko(new Error('No se pudo cargar '+name)); }; document.head.appendChild(s); });
+  return _libs[name];
+}
+function pickFile(accept){ return new Promise(res => { const i=document.createElement('input'); i.type='file'; i.accept=accept; i.onchange=()=>res(i.files[0]||null); i.click(); }); }
+function b64(u8){ let s=''; for(let i=0;i<u8.length;i+=0x8000) s+=String.fromCharCode.apply(null, u8.subarray(i,i+0x8000)); return btoa(s); }
+const stamp = () => isoOf(TODAY);
+const safeName = s => String(s||'archivo').replace(/[\\/:*?"<>|]+/g,'-').slice(0,80);
+
+// ============ Entregar archivos: descarga u OneDrive ============
+async function saveDownload(filename, u8){
+  if(!DL){ toast('Las descargas se activan al abrir el portal desde claude.ai'); return false; }
+  try{ await DL.save({filename, data:new Blob([u8])}); toast('Archivo listo: '+filename); return true; }
+  catch(e){ const c=e&&e.code; toast(c==='declined'?'Descarga cancelada':c==='rate_limited'?'Ya hay una descarga pendiente':c==='rejected_extension'||c==='extension_not_enabled'?'Ese formato no se puede descargar aquí':'No se pudo descargar'); return false; }
+}
+function oneDriveCfg(){ return S.config.onedrive || null; }
+async function saveOneDrive(filename, u8, isText){
+  const cfg = oneDriveCfg();
+  if(!MCP || !cfg){ toast('OneDrive se activa al abrir el portal desde claude.ai'); return false; }
+  if(u8.length > 1048000){ toast('El archivo supera 1 MB; descárgalo en vez de subirlo'); return false; }
+  try{
+    const input = {driveId:cfg.driveId, parentItemId:cfg.folderId, filename, conflictBehavior:'rename'};
+    if(isText) input.content = new TextDecoder().decode(u8); else input.contentBase64 = b64(u8);
+    const r = await MCP.callTool('Microsoft 365','sharepoint_upload_file', input);
+    const txt = typeof r.payload==='string' ? r.payload : JSON.stringify(r.payload||'');
+    const url = (txt.match(/https:\/\/[^\s"']+/)||[])[0];
+    toast('Guardado en OneDrive › Portal de Proyectos');
+    if(url) modal(`<h3>Guardado en OneDrive</h3><p>${esc(filename)} quedó en tu carpeta <b>Portal de Proyectos</b>.</p><p><a href="${esc(url)}" target="_blank" rel="noopener">Abrir en OneDrive</a></p><div style="text-align:right"><button class="btn primary" data-close>Listo</button></div>`);
+    return true;
+  }catch(e){ const c=e&&e.code; toast(c==='needs_reauth'?'Reconecta Microsoft 365 en claude.ai':c==='approval_required'?'OneDrive necesita tu aprobación':c==='server_unavailable'||c==='upstream_error'?'OneDrive no respondió: revisa si se guardó antes de reintentar':'No se pudo guardar en OneDrive'); return false; }
+}
+function offerFile(filename, u8, opts={}){
+  modal(`<h3>${esc(opts.title||'Archivo listo')}</h3><p class="muted" style="margin-top:0">${esc(filename)} · ${(u8.length/1024).toFixed(0)} KB</p>
+    ${opts.note?`<p style="font-size:13px">${opts.note}</p>`:''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><button class="btn" data-close>Cerrar</button>
+    ${opts.noDownload?'':'<button class="btn" id="of_dl">⬇ Descargar</button>'}<button class="btn primary" id="of_od">☁ Guardar en OneDrive</button></div>`);
+  const dl=$('#of_dl'); if(dl) dl.onclick = async () => { if(await saveDownload(filename, u8)) closeModal(); };
+  $('#of_od').onclick = async () => { $('#of_od').disabled=true; $('#of_od').textContent='Subiendo…'; const ok = await saveOneDrive(filename, u8, opts.text); if(ok && !$('#modal a')) closeModal(); else if(!ok){ $('#of_od').disabled=false; $('#of_od').textContent='☁ Guardar en OneDrive'; } };
+}
+
+// ============ Word (.docx) ============
+const xe = s => String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+function wRun(t, o={}){ return `<w:r><w:rPr>${o.b?'<w:b/>':''}${o.color?`<w:color w:val="${o.color}"/>`:''}${o.sz?`<w:sz w:val="${o.sz}"/>`:''}</w:rPr><w:t xml:space="preserve">${xe(t)}</w:t></w:r>`; }
+function wP(content, o={}){ return `<w:p><w:pPr>${o.style?`<w:pStyle w:val="${o.style}"/>`:''}${o.space?`<w:spacing w:after="${o.space}"/>`:''}</w:pPr>${content}</w:p>`; }
+function wTable(rows){
+  const cell = (t,h) => `<w:tc><w:tcPr><w:tcW w:w="0" w:type="auto"/>${h?'<w:shd w:val="clear" w:color="auto" w:fill="E3F2EF"/>':''}</w:tcPr>${wP(wRun(t,{b:h,sz:20}))}</w:tc>`;
+  return `<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/><w:tblW w:w="5000" w:type="pct"/><w:tblBorders>${['top','left','bottom','right','insideH','insideV'].map(b=>`<w:${b} w:val="single" w:sz="4" w:color="C9CFCB"/>`).join('')}</w:tblBorders></w:tblPr>${rows.map((r,i)=>`<w:tr>${r.map(c=>cell(c,i===0)).join('')}</w:tr>`).join('')}</w:tbl>${wP('')}`;
+}
+async function buildDocx(blocks){
+  await lib('zip');
+  const body = blocks.map(b => {
+    if(b.h1) return wP(wRun(b.h1,{b:true,sz:36,color:'0F7B6C'}),{space:80});
+    if(b.sub) return wP(wRun(b.sub,{color:'68716D',sz:20}),{space:240});
+    if(b.h2) return wP(wRun(b.h2,{b:true,sz:26,color:'1D2321'}),{space:80});
+    if(b.p) return wP(wRun(b.p,{sz:22}));
+    if(b.ul) return (b.ul.length?b.ul:['—']).map(t=>wP(wRun('•  '+t,{sz:22}))).join('');
+    if(b.table) return wTable(b.table);
+    return '';
+  }).join('');
+  const z = new JSZip();
+  z.file('[Content_Types].xml','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');
+  z.file('_rels/.rels','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
+  z.file('word/document.xml',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1200" w:right="1200" w:bottom="1200" w:left="1200" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>`);
+  return await z.generateAsync({type:'uint8array'});
+}
+function reportBlocks(f){
+  const ps = projects().filter(p=>p.status!=='Cerrado'&&(!f||p.id===f));
+  const avg = Math.round(ps.reduce((s,p)=>s+(+p.progress||0),0)/(ps.length||1));
+  const blocks = [{h1:'Reporte semanal de avance'},{sub:`Semana del ${TODAY.toLocaleDateString('es-CL',{day:'numeric',month:'long',year:'numeric'})} · Responsable: Alexis`},
+    {h2:'Resumen'},{p:`${ps.length} proyecto(s) activo(s) con avance promedio de ${avg}%. ${ps.filter(p=>p.status==='En riesgo').map(p=>p.name).join(', ')||'Sin proyectos en riesgo'}${ps.some(p=>p.status==='En riesgo')?' requiere(n) atención.':'.'}`},
+    {table:[['Proyecto','Estado','Avance','Cierre'], ...ps.map(p=>[p.id+' · '+p.name, p.status, (+p.progress||0)+'%', fmt(p.end)])]}];
+  ps.forEach(p => { const ts=tasks().filter(t=>t.project===p.id);
+    blocks.push({h2:`${p.id} · ${p.name}`},{p:`Estado: ${p.status} · Avance ${+p.progress||0}% · Cierre ${fmt(p.end)} (${daysTo(p.end)} días)`},
+      {p:'Vencidos:'},{ul:ts.filter(t=>!t.done&&t.due&&daysTo(t.due)<0).map(t=>`${t.text} (${t.owner})`)},
+      {p:'Próximos pasos:'},{ul:ts.filter(t=>!t.done&&(!t.due||daysTo(t.due)>=0)).slice(0,5).map(t=>`${t.text} — ${t.owner}, ${fmt(t.due)}`)}); });
+  return blocks;
+}
+function aiTextBlocks(text){
+  return [{h1:'Reporte semanal de avance'},{sub:`${TODAY.toLocaleDateString('es-CL',{day:'numeric',month:'long',year:'numeric'})} · Responsable: Alexis`},
+    ...text.split('\n').map(l=>l.trim()).filter(Boolean).map(l => /^#{1,4}\s/.test(l)||/^\*\*[^*]+\*\*:?$/.test(l) ? {h2:l.replace(/^#+\s*/,'').replace(/\*\*/g,'')} : /^[-•*]\s+/.test(l) ? {ul:[l.replace(/^[-•*]\s+/,'').replace(/\*\*/g,'')]} : {p:l.replace(/\*\*/g,'')})];
+}
+async function minutaDocx(mt){
+  const acts = mt.actions || tasks().filter(t=>t.meetingId===mt.id).map(t=>({texto:t.text,responsable:t.owner,fecha:t.due}));
+  return buildDocx([{h1:'Minuta de reunión'},{sub:`${mt.title} · ${pName(mt.project)} (${mt.project}) · ${fmt(mt.date)}`},
+    {h2:'Resumen'},{p:mt.summary||'—'},{h2:'Acuerdos'},{ul:mt.agreements||[]},{h2:'Riesgos'},{ul:mt.risks||[]},
+    {h2:'Compromisos'},{table:[['Compromiso','Responsable','Plazo'], ...acts.map(a=>[a.texto, a.responsable||'—', a.fecha?fmt(a.fecha):'—'])]}]);
+}
+
+// ============ Excel (.xlsx) ============
+function interfaceRows(pid){
+  const out = [];
+  Object.values(S.diagrams).filter(dg=>!pid||dg.id===pid).forEach(dg => { const N=Object.fromEntries((dg.nodes||[]).map(n=>[n.id,n]));
+    (dg.links||[]).forEach(l => out.push({Proyecto:dg.id,'Equipo A':N[l.a]?.label||'','IP A':N[l.a]?.ip||'','Interfaz A':l.ifA||'','Equipo B':N[l.b]?.label||'','IP B':N[l.b]?.ip||'','Interfaz B':l.ifB||'',Velocidad:l.speed||'',Medio:l.media||'',VLAN:l.vlan||'','Uso %':+l.util||0})); });
+  return out;
+}
+async function buildXlsx(which){
+  await lib('xlsx');
+  const wb = XLSX.utils.book_new();
+  const add = (name, rows) => { const ws = XLSX.utils.json_to_sheet(rows.length?rows:[{'(vacío)':''}]); ws['!cols'] = Object.keys(rows[0]||{a:1}).map(k=>({wch:Math.min(48,Math.max(10,k.length+2,...rows.map(r=>String(r[k]??'').length+1)))})); XLSX.utils.book_append_sheet(wb, ws, name); };
+  if(!which || which==='proyectos') add('Proyectos', projects().map(p=>({ID:p.id,Proyecto:p.name,Area:p.client,Estado:p.status,'Avance %':+p.progress||0,Inicio:p.start,Cierre:p.end})));
+  if(!which || which==='pendientes') add('Pendientes', tasks().sort((a,b)=>String(a.due).localeCompare(String(b.due))).map(t=>({Proyecto:t.project,Tarea:t.text,Responsable:t.owner,Fecha:t.due,Prioridad:t.prio,Estado:t.done?'Hecho':(t.due&&daysTo(t.due)<0?'Vencido':'Abierto'),Origen:t.origin})));
+  if(!which) add('Reuniones', meetings().sort((a,b)=>b.date.localeCompare(a.date)).map(m=>({Proyecto:m.project,Reunion:m.title,Fecha:m.date,Hora:m.time,Resumen:m.summary||''})));
+  if(!which || which==='interfaces') add('Interfaces', interfaceRows(which==='interfaces'?diagProject:null));
+  return new Uint8Array(XLSX.write(wb,{bookType:'xlsx',type:'array'}));
+}
+async function exportXlsx(which, label){
+  try{ const u8 = await buildXlsx(which); offerFile(`${label||'Portal-Proyectos'}_${stamp()}.xlsx`, u8, {title:'Excel listo'}); }
+  catch(e){ toast('No se pudo generar el Excel'); }
+}
+async function importXlsx(){
+  const f = await pickFile('.xlsx,.xls,.csv'); if(!f) return;
+  try{
+    await lib('xlsx');
+    const wb = XLSX.read(await f.arrayBuffer(), {type:'array', cellDates:true});
+    const norm = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+    const pick = (row, keys) => { for(const k of Object.keys(row)) if(keys.includes(norm(k))) return row[k]; return ''; };
+    const dateOf = v => v instanceof Date ? isoOf(v) : /^\d{4}-\d{2}-\d{2}/.test(String(v)) ? String(v).slice(0,10) : (()=>{ const m=String(v).match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/); return m ? `${m[3].length===2?'20'+m[3]:m[3]}-${pad(m[2])}-${pad(m[1])}` : ''; })();
+    let np=0, nt=0; const newP = [], newT = [];
+    wb.SheetNames.forEach(sn => {
+      XLSX.utils.sheet_to_json(wb.Sheets[sn], {defval:''}).forEach(r => {
+        const tarea = pick(r,['tarea','pendiente','actividad','task']);
+        const nombreP = pick(r,['proyecto','nombre proyecto','project']);
+        const idP = pick(r,['id','codigo','id proyecto']);
+        if(tarea){
+          let pid = String(nombreP||'').trim(); const byName = projects().find(p=>p.name.toLowerCase()===pid.toLowerCase()) || newP.find(p=>p.name.toLowerCase()===pid.toLowerCase());
+          if(byName) pid = byName.id;
+          newT.push({id:uid('t'),project:pid||(projects()[0]||{}).id,text:String(tarea),owner:String(pick(r,['responsable','encargado','owner'])||'Alexis'),due:dateOf(pick(r,['fecha','plazo','vencimiento','fecha compromiso']))||d(7),prio:['Alta','Media','Baja'].find(x=>x.toLowerCase()===norm(pick(r,['prioridad'])))||'Media',done:/hech|cerrad|ok|complet/i.test(String(pick(r,['estado']))),origin:'Excel '+f.name});
+        } else if(nombreP){
+          if(projects().some(p=>p.name.toLowerCase()===String(nombreP).toLowerCase()) || newP.some(p=>p.name.toLowerCase()===String(nombreP).toLowerCase())) return;
+          let id = /^[A-Za-z]+-\d+/.test(String(idP)) ? String(idP) : null; if(!id || S.projects[id]){ let n=projects().length+newP.length+1; do{ id='PRY-'+String(n++).padStart(3,'0'); }while(S.projects[id]||newP.some(p=>p.id===id)); }
+          newP.push({id,name:String(nombreP),client:String(pick(r,['area','cliente','area / cliente'])||'—'),status:['Planificación','En curso','En riesgo','Cerrado'].find(s=>norm(s)===norm(pick(r,['estado'])))||'En curso',progress:Math.max(0,Math.min(100,parseInt(pick(r,['avance','avance %','%']))||0)),start:dateOf(pick(r,['inicio','fecha inicio']))||d(0),end:dateOf(pick(r,['cierre','fin','fecha cierre','termino']))||d(30),owner:'Alexis'});
+        }
+      });
+    });
+    if(!newP.length && !newT.length){ toast('No encontré columnas "Proyecto" o "Tarea" en la planilla'); return; }
+    modal(`<h3>Importar desde Excel</h3><p>Encontré <b>${newP.length}</b> proyecto(s) nuevo(s) y <b>${newT.length}</b> pendiente(s) en <i>${esc(f.name)}</i>.</p>
+      <div class="note" style="margin:0 0 14px">Columnas que reconozco: Proyecto, ID, Área, Estado, Avance, Inicio, Cierre · Tarea, Responsable, Fecha, Prioridad, Estado.</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" data-close>Cancelar</button><button class="btn primary" id="ix_ok">Importar</button></div>`);
+    $('#ix_ok').onclick = async () => { $('#ix_ok').disabled=true; for(const p of newP){ await put('project',p); np++; } for(const t of newT){ await put('task',t); nt++; } closeModal(); toast(`Importados ${np} proyectos y ${nt} pendientes`); render(); };
+  }catch(e){ toast('No pude leer esa planilla'); }
+}
+
+// ============ Calendario Outlook/Teams (.ics) ============
+const TEAMS_RE = /https:\/\/teams\.microsoft\.com\/(?:l\/meetup-join|meet)\/[^\s"<>\\]+/i;
+function parseICS(text){
+  const lines = text.replace(/\r\n[ \t]/g,'').replace(/\n[ \t]/g,'').split(/\r?\n/);
+  const evs = []; let cur = null;
+  const unesc = s => s.replace(/\\n/gi,'\n').replace(/\\,/g,',').replace(/\\;/g,';').replace(/\\\\/g,'\\');
+  const toLocal = (val, params) => {
+    const m = val.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?/); if(!m) return null;
+    if(!m[4]) return {date:`${m[1]}-${m[2]}-${m[3]}`, time:'', allDay:true};
+    if(m[7]){ const dt = new Date(Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+(m[6]||0))); return {date:isoOf(dt), time:`${pad(dt.getHours())}:${pad(dt.getMinutes())}`}; }
+    return {date:`${m[1]}-${m[2]}-${m[3]}`, time:`${m[4]}:${m[5]}`};
+  };
+  for(const ln of lines){
+    if(ln==='BEGIN:VEVENT'){ cur = {}; continue; }
+    if(ln==='END:VEVENT'){ if(cur && cur.start) evs.push(cur); cur=null; continue; }
+    if(!cur) continue;
+    const i = ln.indexOf(':'); if(i<0) continue;
+    const [name, ...params] = ln.slice(0,i).split(';'); const val = ln.slice(i+1);
+    if(name==='SUMMARY') cur.title = unesc(val);
+    else if(name==='LOCATION') cur.loc = unesc(val);
+    else if(name==='DESCRIPTION' || name==='X-ALT-DESC') cur.desc = (cur.desc||'') + unesc(val);
+    else if(name==='DTSTART') cur.start = toLocal(val, params);
+    else if(name==='DTEND') cur.end = toLocal(val, params);
+    else if(name==='STATUS') cur.status = val;
+    else if(name==='X-MICROSOFT-SKYPETEAMSMEETINGURL' || name==='X-MICROSOFT-ONLINEMEETINGCONFLINK') cur.join = val;
+  }
+  const from = d(-7), to = d(90);
+  return evs.filter(e=>e.status!=='CANCELLED' && e.start.date>=from && e.start.date<=to).map(e => ({
+    title:e.title||'(sin título)', date:e.start.date, time:e.start.time, end:e.end?e.end.time:'', loc:e.loc||'',
+    join:(e.join && TEAMS_RE.test(e.join)) ? e.join : ((String(e.desc||'')+' '+String(e.loc||'')).match(TEAMS_RE)||[])[0]||''
+  })).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time)).slice(0,400);
+}
+async function importICS(){
+  const f = await pickFile('.ics,text/calendar'); if(!f) return;
+  try{
+    const evs = parseICS(await f.text());
+    if(!evs.length){ toast('No encontré reuniones en ese archivo (revisa el rango de fechas al exportar)'); return; }
+    await put('ics', {id:'main', events:evs, importedAt:new Date().toISOString(), file:f.name});
+    toast(`${evs.length} reuniones importadas · ${evs.filter(e=>e.join).length} con enlace de Teams`); render();
+  }catch(e){ toast('No pude leer ese calendario'); }
+}
+const icsEvents = () => (S.ics.main && S.ics.main.events) || [];
+function joinBtn(url, small){ return url ? `<a class="btn ${small?'sm':''} join" href="${esc(url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Unirse a Teams</a>` : ''; }
+
+// ============ Visio (.vsdx) → diagrama ============
+function vType(s){
+  s = String(s||'').toLowerCase();
+  if(/firewall|\bfw\b|fortigate|palo ?alto|\basa\b|checkpoint|utm/.test(s)) return 'firewall';
+  if(/router|\brtr\b|\bisr\b|\basr\b|mpls|gateway|\bpe\b|\bce\b/.test(s)) return 'router';
+  if(/access ?point|\bap\b|wireless|wi-?fi|wlan|\bwlc\b/.test(s)) return 'ap';
+  if(/server|servidor|\bsrv\b|vmware|esxi|storage|nas|san\b|database|rack/.test(s)) return 'server';
+  if(/cloud|nube|internet|\bwan\b|isp|carrier/.test(s)) return 'cloud';
+  if(/\bpc\b|workstation|laptop|notebook|desktop|user|usuario|phone|tel[eé]fono|printer|impresora|camera|c[aá]mara/.test(s)) return 'pc';
+  if(/switch|\bsw\b|catalyst|nexus|\bl2\b|\bl3\b|stack|hub/.test(s)) return 'switch';
+  return '';
+}
+function splitIfaces(t){
+  t = String(t||'').trim(); if(!t) return ['',''];
+  const p = t.split(/\s*(?:<->|<=>|↔|⇄|—|–|\s-\s|\s\/\s|\|)\s*/).filter(Boolean);
+  return p.length>=2 ? [p[0],p[1]] : [t,''];
+}
+async function parseVsdx(file){
+  await lib('zip');
+  const z = await JSZip.loadAsync(await file.arrayBuffer());
+  const xml = async p => { const f=z.file(p); return f ? new DOMParser().parseFromString(await f.async('string'),'application/xml') : null; };
+  const kids = (el, name) => el ? Array.from(el.children).filter(c=>c.localName===name) : [];
+  const cell = (sh, n) => { const c = kids(sh,'Cell').find(c=>c.getAttribute('N')===n); return c ? c.getAttribute('V') : null; };
+  const masters = {};
+  const mdoc = await xml('visio/masters/masters.xml');
+  if(mdoc) Array.from(mdoc.getElementsByTagName('Master')).forEach(m => masters[m.getAttribute('ID')] = m.getAttribute('NameU')||m.getAttribute('Name')||'');
+  const pdoc = await xml('visio/pages/pages.xml');
+  const pageNames = pdoc ? Array.from(pdoc.getElementsByTagName('Page')).map(p=>p.getAttribute('NameU')||p.getAttribute('Name')) : [];
+  const files = Object.keys(z.files).filter(n=>/^visio\/pages\/page\d+\.xml$/.test(n)).sort((a,b)=>parseInt(a.match(/\d+/))-parseInt(b.match(/\d+/)));
+  const pages = [];
+  for(let pi=0; pi<files.length; pi++){
+    const doc = await xml(files[pi]); if(!doc) continue;
+    const root = doc.documentElement; const shapesEl = kids(root,'Shapes')[0];
+    const shapes = kids(shapesEl,'Shape');
+    const nodes = [], conns = {}, byId = {};
+    shapes.forEach(sh => {
+      const id = sh.getAttribute('ID'); const mname = masters[sh.getAttribute('Master')]||''; const nameU = sh.getAttribute('NameU')||sh.getAttribute('Name')||'';
+      const text = (kids(sh,'Text')[0]?.textContent||'').replace(/\s+\n/g,'\n').trim();
+      const isConn = cell(sh,'BeginX')!==null || /connector|conector|dynamic|l[ií]nea|line\b|cable/i.test(mname+' '+nameU);
+      if(isConn){ conns[id] = {id, text, a:null, b:null}; return; }
+      const x = parseFloat(cell(sh,'PinX')), y = parseFloat(cell(sh,'PinY'));
+      if(isNaN(x)||isNaN(y)) return;
+      const w = parseFloat(cell(sh,'Width'))||1;
+      if(!text && !mname) return;
+      if(!mname && w>4) return; // contenedores / marcos grandes
+      const ip = (text.match(/\b(?:\d{1,3}\.){3}\d{1,3}(?:\/\d{1,2})?\b/)||[])[0]||'';
+      const label = (text.split('\n').map(s=>s.replace(ip,'').trim()).find(Boolean) || mname || nameU || 'Equipo').slice(0,40);
+      const type = vType(mname+' '+nameU+' '+text) || 'switch';
+      const n = {vid:id, label, ip, model:(mname && mname!==label)?mname:'', type, x, y, guessed:!vType(mname+' '+nameU+' '+text)};
+      nodes.push(n); byId[id] = n;
+    });
+    Array.from(doc.getElementsByTagName('Connect')).forEach(c => {
+      const cn = conns[c.getAttribute('FromSheet')]; const to = c.getAttribute('ToSheet'); if(!cn || !byId[to]) return;
+      const fc = c.getAttribute('FromCell')||''; if(/^Begin/i.test(fc)) cn.a = to; else if(/^End/i.test(fc)) cn.b = to; else if(!cn.a) cn.a = to; else cn.b = to;
+    });
+    const links = Object.values(conns).filter(c=>c.a&&c.b&&c.a!==c.b).map(c => { const [ia,ib]=splitIfaces(c.text); return {a:c.a,b:c.b,ifA:ia,ifB:ib,text:c.text}; });
+    pages.push({name:pageNames[pi]||('Página '+(pi+1)), nodes, links});
+  }
+  return pages.filter(p=>p.nodes.length);
+}
+function layoutVisio(page){
+  const xs = page.nodes.map(n=>n.x), ys = page.nodes.map(n=>n.y);
+  const minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys);
+  const sx = (W-NS-80)/Math.max(maxX-minX, 0.001), sy = (H-NS-110)/Math.max(maxY-minY, 0.001), s = Math.min(sx, sy, 140);
+  const ox = 40 + ((W-NS-80) - (maxX-minX)*s)/2, oy = 30 + ((H-NS-110) - (maxY-minY)*s)/2;
+  const idMap = {};
+  const nodes = page.nodes.map((n,i) => { const id='v'+Date.now().toString(36)+i; idMap[n.vid]=id; return {id, type:n.type, label:n.label, ip:n.ip, model:n.model, x:Math.round(ox+(n.x-minX)*s), y:Math.round(oy+(maxY-n.y)*s)}; });
+  const links = page.links.map((l,i) => ({id:'vl'+Date.now().toString(36)+i, a:idMap[l.a], b:idMap[l.b], ifA:l.ifA, ifB:l.ifB, speed:/10\s?g/i.test(l.text)?'10G':/100\s?m/i.test(l.text)?'100M':'1G', media:/fibra|fiber|sfp|\bte\d|\bxe-/i.test(l.text)?'fibra':/wan|mpls|internet/i.test(l.text)?'wan':'cobre', vlan:(l.text.match(/vlan\s*([\d,\- ]+)/i)||[])[1]||'', util:30, flow:'both'}));
+  return {nodes, links};
+}
+async function importVisio(){
+  const f = await pickFile('.vsdx'); if(!f) return;
+  if(/\.vsd$/i.test(f.name)){ toast('Ese es el formato antiguo .vsd: ábrelo en Visio y guárdalo como .vsdx'); return; }
+  toast('Leyendo '+f.name+'…');
+  let pages;
+  try{ pages = await parseVsdx(f); }catch(e){ toast('No pude leer ese Visio. ¿Es un .vsdx?'); return; }
+  if(!pages.length){ toast('No encontré equipos en ese Visio'); return; }
+  const cur = getDiagram(diagProject);
+  modal(`<h3>Importar desde Visio</h3><p class="muted" style="margin-top:0">${esc(f.name)}</p>
+    <div class="field"><label>Página</label><select id="vx_p">${pages.map((p,i)=>`<option value="${i}">${esc(p.name)} · ${p.nodes.length} equipos · ${p.links.length} conexiones</option>`).join('')}</select></div>
+    <div class="field"><label>Destino</label><select id="vx_to">${projOptions(diagProject)}</select></div>
+    <div id="vx_info" class="note" style="margin:0 0 14px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button class="btn" data-close>Cancelar</button>${cur.nodes.length?'<button class="btn" id="vx_add">Agregar al diagrama actual</button>':''}<button class="btn primary" id="vx_rep">${cur.nodes.length?'Reemplazar diagrama':'Importar'}</button></div>`);
+  const info = () => { const p = pages[+$('#vx_p').value]; const g = p.nodes.filter(n=>n.guessed).length;
+    $('#vx_info').innerHTML = `Equipos: ${p.nodes.slice(0,8).map(n=>esc(n.label)).join(', ')}${p.nodes.length>8?'…':''}.<br>${g?`${g} equipo(s) sin tipo reconocido quedarán como switch; puedes cambiarlos después.`:'Todos los tipos de equipo fueron reconocidos.'} Las interfaces se toman del texto de cada conector (ej. "Gi1/0/1 - Te1/1/1").`; };
+  info(); $('#vx_p').onchange = info;
+  const go = replace => { const p = pages[+$('#vx_p').value]; const to = $('#vx_to').value; const out = layoutVisio(p); const dg = getDiagram(to);
+    const nd = replace ? {id:to, nodes:out.nodes, links:out.links} : {id:to, nodes:[...dg.nodes, ...out.nodes.map(n=>({...n, y:Math.min(H-NS-40, n.y)}))], links:[...dg.links, ...out.links]};
+    nd.source = f.name; saveDiagram(nd); diagProject = to; dSel=null; route=null; closeModal(); render(); toast(`Importados ${out.nodes.length} equipos y ${out.links.length} conexiones desde Visio`); };
+  $('#vx_rep').onclick = () => go(true); const ad=$('#vx_add'); if(ad) ad.onclick = () => go(false);
+}
+
+// ============ Exportar diagrama ============
+function diagramSVG(){
+  const c = $('#canvas'); if(!c) return '';
+  const clone = c.cloneNode(true); clone.setAttribute('xmlns','http://www.w3.org/2000/svg'); clone.setAttribute('viewBox',`0 0 ${W} ${H}`); clone.setAttribute('width',W); clone.setAttribute('height',H);
+  clone.removeAttribute('id'); clone.querySelectorAll('animateMotion').forEach(a=>a.parentNode.remove());
+  clone.insertAdjacentHTML('afterbegin', `<rect width="${W}" height="${H}" fill="#ffffff"/><style>text{font-family:Segoe UI,Arial,sans-serif}</style>`);
+  return '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(clone);
+}
+function drawioXML(dg){
+  const col = {router:'#e3f2ef;strokeColor=#0f7b6c', switch:'#e8eefc;strokeColor=#3056b8', firewall:'#fdeee5;strokeColor=#c2410c', server:'#f1eefb;strokeColor=#6b46c1', ap:'#fdf3e1;strokeColor=#b45309', pc:'#eef0ed;strokeColor=#68716d', cloud:'#eef0ed;strokeColor=#68716d'};
+  const cells = dg.nodes.map(n => `<mxCell id="${xe(n.id)}" value="${xe(n.label+(n.ip?'&#xa;'+n.ip:''))}" style="${n.type==='cloud'?'ellipse;shape=cloud;':'rounded=1;'}whiteSpace=wrap;html=0;fillColor=${col[n.type]||col.switch};fontStyle=1;" vertex="1" parent="1"><mxGeometry x="${n.x}" y="${n.y}" width="110" height="60" as="geometry"/></mxCell>`).join('') +
+    dg.links.map(l => `<mxCell id="${xe(l.id)}" value="${xe([l.ifA,l.ifB].filter(Boolean).join(' ↔ ')+(l.speed?' · '+l.speed:'')+(l.vlan?' · VLAN '+l.vlan:''))}" style="endArrow=none;html=0;strokeWidth=2;${l.media==='fibra'?'strokeColor=#e08a1e;':l.media==='wan'?'dashed=1;strokeColor=#6b46c1;':''}" edge="1" parent="1" source="${xe(l.a)}" target="${xe(l.b)}"><mxGeometry relative="1" as="geometry"/></mxCell>`).join('');
+  return `<mxfile host="PortalProyectos"><diagram name="${xe(dg.id)}"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>${cells}</root></mxGraphModel></diagram></mxfile>`;
+}
+function exportDiagramMenu(){
+  const dg = getDiagram(diagProject);
+  modal(`<h3>Exportar diagrama · ${esc(diagProject)}</h3>
+    <div class="list-item"><div style="flex:1"><b>Imagen SVG</b><div class="muted" style="font-size:12px">Para Word, correos o Visio (Insertar → Imágenes; luego clic derecho → Convertir en forma)</div></div><button class="btn sm" id="ex_svg">SVG</button></div>
+    <div class="list-item"><div style="flex:1"><b>Tabla de interfaces en Excel</b><div class="muted" style="font-size:12px">Equipo, IP, interfaz A/B, velocidad, medio, VLAN</div></div><button class="btn sm" id="ex_xl">Excel</button></div>
+    <div class="list-item"><div style="flex:1"><b>Archivo draw.io → Visio</b><div class="muted" style="font-size:12px">Se guarda en OneDrive; ábrelo en diagrams.net y usa Archivo → Exportar como → VSDX</div></div><button class="btn sm" id="ex_dio">OneDrive</button></div>
+    <div style="text-align:right;margin-top:12px"><button class="btn" data-close>Cerrar</button></div>`);
+  $('#ex_svg').onclick = () => { const s = diagramSVG(); offerFile(`Diagrama_${diagProject}_${stamp()}.svg`, new TextEncoder().encode(s), {title:'Imagen del diagrama', text:true}); };
+  $('#ex_xl').onclick = () => exportXlsx('interfaces', 'Interfaces_'+diagProject);
+  $('#ex_dio').onclick = async () => { closeModal(); await saveOneDrive(`Diagrama_${diagProject}_${stamp()}.drawio`, new TextEncoder().encode(drawioXML(dg)), true); };
+}
+let zoom = 1;
+function applyZoom(){ const c=$('#canvas'); if(!c) return; const w=W/zoom, h=H/zoom; c.setAttribute('viewBox', `${(W-w)/2} ${(H-h)/2} ${w} ${h}`); const z=$('#zv'); if(z) z.textContent=Math.round(zoom*100)+'%'; }
+
+// ============ Ajustes y accesos ============
+const PORTAL_URL = 'https://claude.ai/artifact/WPQaY9QWcZR7p1y9Mknktx';
+const SAMPLE_IDS = {project:['PRY-001','PRY-002','PRY-003','PRY-004'], task:['t1','t2','t3','t4','t5','t6','t7'], meeting:['m1','m2','m3','m4'], diagram:['PRY-001']};
+function settingsModal(){
+  const ics = S.ics.main, od = oneDriveCfg();
+  const hasSample = SAMPLE_IDS.task.some(id=>S.tasks[id]) || SAMPLE_IDS.meeting.some(id=>S.meetings[id]);
+  modal(`<h3>Ajustes</h3>
+    <div style="font-weight:600;margin:4px 0 6px">Acceso</div>
+    <div class="note" style="margin:0 0 6px">PC: <span class="mono" style="font-size:11.5px;word-break:break-all">${PORTAL_URL}</span><br>Celular: app Claude → menú → Artifacts → <b>Portal de Proyectos</b> (fijado), o abre el mismo enlace.</div>
+    <button class="btn sm" id="st_copy">Copiar enlace</button>
+    <div style="font-weight:600;margin:16px 0 6px">Agenda Teams / Outlook</div>
+    <div class="muted" style="font-size:13px">${ics?`Calendario importado: ${ics.events.length} reuniones (${esc(ics.file||'.ics')}, ${new Date(ics.importedAt).toLocaleString('es-CL',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}).`:'Aún no importas tu calendario de trabajo.'}</div>
+    <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><button class="btn sm" id="st_ics">Importar calendario (.ics)</button><button class="btn sm" id="st_icshelp">¿Cómo exportarlo?</button></div>
+    <div style="font-weight:600;margin:16px 0 6px">Excel</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" id="st_xin">Importar proyectos/pendientes</button><button class="btn sm" id="st_xout">Exportar todo</button></div>
+    <div style="font-weight:600;margin:16px 0 6px">OneDrive</div>
+    <div class="muted" style="font-size:13px">${od?`Los archivos se guardan en <a href="${esc(od.webUrl)}" target="_blank" rel="noopener">OneDrive › Portal de Proyectos</a>.`:'Carpeta no configurada.'}</div>
+    ${hasSample?`<div style="font-weight:600;margin:16px 0 6px">Datos de ejemplo</div><button class="btn sm" id="st_clean" style="color:var(--warn)">Borrar datos de ejemplo</button>`:''}
+    <div style="text-align:right;margin-top:16px"><button class="btn primary" data-close>Listo</button></div>`);
+  $('#st_copy').onclick = async () => { try{ await navigator.clipboard.writeText(PORTAL_URL); toast('Enlace copiado'); }catch(e){ toast('No se pudo copiar'); } };
+  $('#st_ics').onclick = () => { closeModal(); importICS(); };
+  $('#st_icshelp').onclick = () => modal(`<h3>Exportar tu calendario de Outlook</h3>
+    <ol style="padding-left:18px;line-height:1.6"><li>Abre <b>Outlook</b> (escritorio) y ve al <b>Calendario</b>.</li><li><b>Archivo → Guardar calendario</b>.</li><li>En <b>Más opciones</b> elige el rango (ej. próximos 30 días) y <b>Detalle completo</b> (así se incluye el enlace de Teams).</li><li>Guarda el archivo <b>.ics</b> y súbelo aquí en Ajustes → Importar calendario.</li></ol>
+    <p class="muted" style="font-size:13px">Tu agenda de Teams es la misma de Outlook, así que con esto quedan ambas. Repite cuando quieras actualizar.</p><div style="text-align:right"><button class="btn primary" data-close>Entendido</button></div>`);
+  $('#st_xin').onclick = () => { closeModal(); importXlsx(); };
+  $('#st_xout').onclick = () => { closeModal(); exportXlsx(null, 'Portal-Proyectos'); };
+  const cl = $('#st_clean'); if(cl) cl.onclick = () => confirmBox('¿Borrar los proyectos, pendientes, reuniones y diagrama de ejemplo?', async () => {
+    for(const [k, ids] of Object.entries(SAMPLE_IDS)) for(const id of ids){ if(S[KIND[k]][id]) await del(k, id); }
+    for(const t of tasks()) if(SAMPLE_IDS.project.includes(t.project) && !S.projects[t.project]) await del('task', t.id);
+    toast('Datos de ejemplo borrados'); render(); });
 }
 
 // ============ Modal ============

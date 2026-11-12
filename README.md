@@ -2,8 +2,11 @@
 
 Portal personal para gestionar proyectos de redes/TI: proyectos con carpetas, reuniones con minutas hechas por Claude, pendientes, agenda con Outlook, diagramas de red con interfaces y tráfico, y reportes de avance.
 
-**Portal en uso:** https://claude.ai/artifact/WPQaY9QWcZR7p1y9Mknktx
-(se abre desde claude.ai en el PC o en la app de Claude del celular; los datos se sincronizan en la nube)
+**Portal (versión 1.0):** https://claude.ai/artifact/WPQaY9QWcZR7p1y9Mknktx
+
+- **PC:** abre el enlace en el navegador con tu sesión de claude.ai (también está fijado en la barra lateral de claude.ai).
+- **Celular:** app de Claude → Artifacts → *Portal de Proyectos*, o el mismo enlace.
+- Los datos se sincronizan en la nube entre todos tus dispositivos.
 
 ## Qué hay en este repositorio
 
@@ -20,7 +23,17 @@ Portal personal para gestionar proyectos de redes/TI: proyectos con carpetas, re
 - **Pendientes:** lista filtrable por proyecto y estado; cada pendiente guarda su origen (reunión o manual).
 - **Agenda:** semana con reuniones del portal, vencimientos y eventos de Outlook; puede crear el evento también en Outlook.
 - **Diagramas:** equipos (hostname, modelo, IP), enlaces con interfaz A/B, velocidad, medio, VLAN, % de uso y sentido; tráfico animado, trazado de ruta entre equipos y tabla de interfaces copiable. Claude puede agregar equipos y enlaces desde una descripción.
-- **Reportes:** reporte semanal automático; con Claude, redactado para jefatura.
+- **Reportes:** reporte semanal automático; con Claude, redactado para jefatura. Exporta a Word y Excel.
+
+## Integraciones Microsoft
+
+| Herramienta | Qué hace el portal |
+|---|---|
+| **Visio** | Importa archivos `.vsdx`: equipos (tipo según la plantilla), IPs y conexiones; las interfaces se leen del texto del conector (ej. `Gi1/0/1 - Te1/1/1`). Exporta el diagrama a SVG (Visio lo inserta y convierte en formas) y a `.drawio` en OneDrive (draw.io exporta a `.vsdx`). |
+| **Excel** | Exporta proyectos, pendientes, reuniones e interfaces a `.xlsx`; importa proyectos y pendientes desde una planilla. |
+| **Word** | Minutas de reunión y reportes de avance en `.docx`. |
+| **OneDrive** | Guarda los archivos generados en *OneDrive › Portal de Proyectos*. |
+| **Outlook / Teams** | Lee y crea eventos en Outlook (cuenta conectada). La agenda del trabajo se importa con un `.ics` exportado desde Outlook, incluyendo el botón *Unirse a Teams*. |
 
 ## Cómo funciona por dentro
 
@@ -37,6 +50,7 @@ Teams es institucional (sin acceso de administrador), por lo que las reuniones s
 ## Próximos pasos
 
 - [ ] Reemplazar los datos de ejemplo por proyectos reales
-- [ ] Biblioteca de íconos exportados de Visio (SVG) en el editor de diagramas
-- [ ] Zoom del diagrama en el celular
+- [x] Importar diagramas de Visio (.vsdx)
+- [x] Zoom del diagrama
+- [ ] Conectar la cuenta Microsoft de trabajo (requiere aprobación de TI)
 - [ ] Versión independiente (Next.js + Supabase + Vercel) si se necesita fuera de claude.ai
