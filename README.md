@@ -16,7 +16,7 @@ Portal personal para gestionar proyectos de redes/TI: proyectos con carpetas, re
 
 - **Inicio:** indicadores, avance por proyecto, próximas reuniones, pendientes urgentes y "Pregúntale a Claude".
 - **Proyectos:** ficha por proyecto con estado, avance, carpetas estándar (01_Gestion … 06_Entregables), pendientes y reuniones.
-- **Reuniones:** pega o sube la transcripción (.txt/.vtt de Fireflies) y Claude arma la minuta: resumen, acuerdos, riesgos y pendientes con responsable y plazo.
+- **Reuniones:** importa una reunión desde Fireflies (o pega/sube un .txt/.vtt) y Claude arma la minuta: resumen, acuerdos, riesgos y pendientes con responsable y plazo.
 - **Pendientes:** lista filtrable por proyecto y estado; cada pendiente guarda su origen (reunión o manual).
 - **Agenda:** semana con reuniones del portal, vencimientos y eventos de Outlook; puede crear el evento también en Outlook.
 - **Diagramas:** equipos (hostname, modelo, IP), enlaces con interfaz A/B, velocidad, medio, VLAN, % de uso y sentido; tráfico animado, trazado de ruta entre equipos y tabla de interfaces copiable. Claude puede agregar equipos y enlaces desde una descripción.
@@ -27,6 +27,7 @@ Portal personal para gestionar proyectos de redes/TI: proyectos con carpetas, re
 - **Datos:** colección `items` en la base de datos del artifact. Cada documento tiene `kind` = `project`, `task`, `meeting` o `diagram`.
 - **IA:** capacidad `sample` del artifact (Claude).
 - **Calendario:** conector Microsoft 365 (`outlook_calendar_search`, `outlook_create_event`).
+- **Transcripciones:** conector Fireflies (`fireflies_get_transcripts`, `fireflies_get_transcript`).
 - **Sin conexión:** si el archivo se abre fuera de claude.ai, funciona en modo local (datos solo en ese navegador) y la IA usa reglas simples.
 
 ## Transcripciones

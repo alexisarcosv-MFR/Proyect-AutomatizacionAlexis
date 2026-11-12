@@ -215,7 +215,7 @@ function setSync(state, note){
 async function initData(){
   const use = n => (window.claude && typeof window.claude.use==='function') ? window.claude.use(n).catch(()=>null) : Promise.resolve(null);
   use('sample').then(s => { AI = s; if(s) render(); });
-  use('mcp').then(m => { MCP = m; if(m && current==='calendario') render(); });
+  use('mcp').then(m => { MCP = m; if(m && (current==='calendario'||current==='reuniones')) render(); });
   DB = await use('db');
   if(!DB){ return goLocal('Abre el portal desde claude.ai (PC o celular) para sincronizar.'); }
   let first = true;
@@ -433,9 +433,10 @@ function taskModal(t){
 let lastAnalysis = null, analyzing = false;
 function reuniones(m){
   const list = meetings().sort((a,b)=>b.date.localeCompare(a.date));
-  m.innerHTML = `<div class="top"><div><h1>Reuniones</h1><div class="sub">Pega o sube la transcripción de Fireflies y Claude arma la minuta</div></div></div>
+  m.innerHTML = `<div class="top"><div><h1>Reuniones</h1><div class="sub">Importa una reunión de Fireflies (o pega una transcripción) y Claude arma la minuta</div></div></div>
   <div class="grid two">
     <div class="card"><h3>Procesar transcripción</h3>
+      ${ffBlock()}
       <div class="toolbar"><select id="m_p">${projOptions()}</select>
       <input id="m_t" placeholder="Título de la reunión" style="flex:1;min-width:160px">
       <label class="btn sm" style="cursor:pointer">Subir .txt / .vtt<input type="file" id="m_f" accept=".txt,.vtt,.srt,.md,text/plain" hidden></label></div>
@@ -448,6 +449,67 @@ function reuniones(m){
   </div>`;
   $('#m_f').onchange = e => { const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ $('#m_txt').value=r.result; if(!$('#m_t').value) $('#m_t').value=f.name.replace(/\.[^.]+$/,''); }; r.readAsText(f); };
   $('#m_go').onclick = analyze;
+  bindFF();
+}
+
+// ---- Fireflies ----
+let ffList = [], ffState = 'idle', ffWatch = null, ffBusy = false;
+const ffDate = v => { if(v==null||v==='') return ''; const n = typeof v==='number' ? v : (/^\d+$/.test(v) ? +v : Date.parse(v)); if(!n||isNaN(n)) return ''; return isoOf(new Date(n)); };
+function ffItems(p){
+  if(!p) return [];
+  if(typeof p==='string'){ try{ return ffItems(JSON.parse(p)); }catch(e){ return []; } }
+  if(Array.isArray(p)) return p.filter(x=>x && typeof x==='object' && x.id);
+  for(const k of ['data','transcripts','meetings','results','items']) if(p[k]){ const r=ffItems(p[k]); if(r.length) return r; }
+  return [];
+}
+function ffText(p){
+  if(!p) return '';
+  if(typeof p==='string'){ try{ const j=JSON.parse(p); if(j && typeof j==='object') return ffText(j); }catch(e){} return p; }
+  if(Array.isArray(p)) return p.map(s=> typeof s==='string' ? s : `${s.speaker_name||s.speaker||'Hablante'}: ${s.text||s.raw_text||''}`).join('\n');
+  for(const k of ['sentences','transcript','content','text','data']) if(p[k]){ const t=ffText(p[k]); if(t) return t; }
+  return '';
+}
+function watchFF(){
+  if(!MCP || ffWatch) return;
+  ffState = 'loading';
+  try{
+    ffWatch = MCP.watchTool('Fireflies','fireflies_get_transcripts',{limit:15, format:'json'}, ev => {
+      if(ev.type==='data'){ ffList = ffItems(ev.result.payload).map(x=>({id:x.id, title:x.title||'Reunión sin título', date:ffDate(x.date||x.dateString||x.created_at)})); ffState='ok'; }
+      else { const c=ev.error&&ev.error.code; if(['needs_reauth','server_not_connected','not_in_manifest','blocked_by_policy','approval_required'].includes(c)) ffList=[]; ffState = c==='needs_reauth'?'reauth':c==='server_not_connected'?'noconn':c==='approval_required'?'approval':c==='not_in_manifest'?'denied':'error'; }
+      if(current==='reuniones' && !isEditing()) render();
+    }, {cache:{staleTime:60000,gcTime:600000}, refetchInterval:600000});
+  }catch(e){ ffState='error'; }
+}
+function ffBlock(){
+  if(!MCP) return '';
+  watchFF();
+  const msg = {loading:'Buscando tus reuniones en Fireflies…', reauth:'Vuelve a conectar Fireflies en claude.ai → Configuración → Conectores.', noconn:'Conecta Fireflies en claude.ai → Configuración → Conectores.', approval:'Falta tu aprobación para leer Fireflies.', denied:'El acceso a Fireflies está desactivado para este portal.', error:'No se pudo leer Fireflies ahora.'}[ffState];
+  return `<div class="ai-box" style="margin:0 0 14px"><h4>🔥 Importar desde Fireflies</h4>
+    ${msg ? `<div class="muted" style="font-size:13px">${msg} ${ffState==='approval'?'<button class="btn sm" id="ffAllow">Permitir</button>':''}</div>` :
+      ffList.length ? `<div class="toolbar" style="margin:0"><select id="ffSel" style="flex:1;min-width:0">${ffList.map(x=>`<option value="${esc(x.id)}">${x.date?fmt(x.date)+' · ':''}${esc(x.title)}</option>`).join('')}</select><button class="btn primary sm" id="ffGo" ${ffBusy?'disabled':''}>${ffBusy?'Trayendo…':'Traer y analizar'}</button></div>`
+      : '<div class="muted" style="font-size:13px">Aún no hay reuniones grabadas. Graba con la app de escritorio de Fireflies y aparecerán aquí unos minutos después.</div>'}
+  </div>`;
+}
+function bindFF(){
+  const al = $('#ffAllow'); if(al) al.onclick = async () => { try{ await MCP.callTool('Fireflies','fireflies_get_transcripts',{limit:15,format:'json'}); if(ffWatch){ ffWatch(); ffWatch=null; } render(); }catch(e){ toast('Sigue sin permiso'); } };
+  const go = $('#ffGo'); if(!go) return;
+  go.onclick = async () => {
+    const id = $('#ffSel').value, meta = ffList.find(x=>x.id===id) || {};
+    ffBusy = true; go.disabled = true; go.textContent = 'Trayendo…';
+    try{
+      const r = await MCP.callTool('Fireflies','fireflies_get_transcript',{transcriptId:id});
+      const text = ffText(r.payload) || ffText((r.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n'));
+      if(!text){ toast('La reunión no trae texto todavía'); }
+      else {
+        $('#m_txt').value = text;
+        $('#m_t').value = meta.title || 'Reunión Fireflies';
+        const guess = projects().find(p => (meta.title||'').toLowerCase().includes(p.id.toLowerCase()) || (meta.title||'').toLowerCase().includes(p.name.toLowerCase().split(' ')[0]));
+        if(guess) $('#m_p').value = guess.id;
+        ffBusy = false; await analyze();
+      }
+    }catch(e){ const c=e&&e.code; toast(c==='needs_reauth'?'Reconecta Fireflies en claude.ai':c==='approval_required'?'Fireflies necesita tu aprobación':c==='tool_error'?'Fireflies no encontró esa reunión':'No se pudo traer la reunión'); }
+    ffBusy = false; const g=$('#ffGo'); if(g){ g.disabled=false; g.textContent='Traer y analizar'; }
+  };
 }
 function heuristic(text){
   const lines = text.split('\n').map(l=>l.trim()).filter(Boolean);
