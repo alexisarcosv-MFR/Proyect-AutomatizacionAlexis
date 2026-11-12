@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portal de Proyectos · Prototipo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f4f5f2; --panel:#ffffff; --ink:#1d2321; --muted:#68716d; --line:#e2e5e0;
+  --side:#14201c; --side-ink:#c9d3cf; --accent:#0f7b6c; --accent-soft:#e3f2ef;
+  --warn:#c2410c; --warn-soft:#fdeee5; --ok:#15803d; --ok-soft:#e5f4ea; --amber:#b45309; --amber-soft:#fdf3e1;
+  --blue:#2f5bd3; --blue-soft:#e8eefc; --r:10px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font-family:'IBM Plex Sans',system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:14px;display:flex}
+button,input,select,textarea{font:inherit;color:inherit}
+.mono{font-family:'IBM Plex Mono',monospace}
+aside{width:228px;flex-shrink:0;background:var(--side);color:var(--side-ink);display:flex;flex-direction:column;padding:18px 12px;height:100vh;position:sticky;top:0}
+.brand{display:flex;align-items:center;gap:10px;padding:4px 8px 20px;color:#fff;font-weight:600;font-size:15px}
+.brand .dot{width:28px;height:28px;border-radius:8px;background:var(--accent);display:grid;place-items:center;font-size:13px}
+nav a{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;color:var(--side-ink);text-decoration:none;margin-bottom:2px;cursor:pointer;position:relative}
+nav a:hover{background:#1f2e29}
+nav a.active{background:#24382f;color:#fff}
+nav a svg{width:18px;height:18px;flex-shrink:0;stroke:currentColor;fill:none;stroke-width:1.8}
+nav .badge{margin-left:auto;background:var(--warn);color:#fff;font-size:11px;border-radius:10px;padding:1px 7px}
+.side-foot{margin-top:auto;font-size:12px;padding:10px;border-top:1px solid #24382f;line-height:1.5}
+.sync{display:flex;align-items:center;gap:7px}
+.sync i{width:8px;height:8px;border-radius:50%;background:#7c8a85;display:inline-block}
+.sync.on i{background:#34d399} .sync.off i{background:#f59e0b}
+main{flex:1;min-width:0;padding:26px 32px 40px;overflow:auto;height:100vh}
+.top{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:20px;gap:14px;flex-wrap:wrap}
+h1{font-size:24px;margin:0;font-weight:600;letter-spacing:-.01em}
+.sub{color:var(--muted);margin-top:4px}
+.btn{border:1px solid var(--line);background:var(--panel);padding:8px 14px;border-radius:8px;cursor:pointer;font-weight:500;white-space:nowrap}
+.btn:hover{border-color:#c5cbc6}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{background:#0c6457}
+.btn.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.btn.sm{padding:5px 10px;font-size:13px}
+.btn:disabled{opacity:.55;cursor:default}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px}
+.card h3{margin:0 0 12px;font-size:14px;font-weight:600}
+.grid{display:grid;gap:16px}
+.kpis{grid-template-columns:repeat(4,1fr)}
+.kpi .n{font-size:28px;font-weight:600;margin-top:4px}
+.kpi .l{color:var(--muted);font-size:13px}
+.two{grid-template-columns:1.4fr 1fr}
+.bar{height:8px;border-radius:4px;background:#edf0ec;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:4px}
+.prow{display:grid;grid-template-columns:1fr 120px 44px;gap:12px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}
+.prow:last-child{border:0}
+.pill{display:inline-block;font-size:12px;padding:2px 9px;border-radius:12px;font-weight:500;white-space:nowrap}
+.p-ok{background:var(--ok-soft);color:var(--ok)} .p-warn{background:var(--warn-soft);color:var(--warn)} .p-amber{background:var(--amber-soft);color:var(--amber)} .p-grey{background:#eef0ed;color:var(--muted)} .p-acc{background:var(--accent-soft);color:var(--accent)} .p-blue{background:var(--blue-soft);color:var(--blue)}
+.tbl{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-weight:500;color:var(--muted);font-size:12px;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:10px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border:0}
+tr.click{cursor:pointer} tr.click:hover td{background:#fafbf9}
+.toolbar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
+.toolbar select,.toolbar input,.field input,.field select,.field textarea{border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 10px;max-width:100%}
+.list-item{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);align-items:flex-start}
+.list-item:last-child{border:0}
+.date-chip{min-width:46px;text-align:center;background:var(--accent-soft);color:var(--accent);border-radius:8px;padding:4px 0;font-weight:600;line-height:1.15}
+.date-chip small{display:block;font-weight:500;font-size:11px}
+.date-chip.ol{background:var(--blue-soft);color:var(--blue)}
+.muted{color:var(--muted)}
+.chk{width:20px;height:20px;border:1.5px solid #b9c0bb;border-radius:5px;cursor:pointer;flex-shrink:0;display:grid;place-items:center;background:#fff;font-size:12px}
+.chk.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.done-text{text-decoration:line-through;color:var(--muted)}
+.folders{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.folder{border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;gap:10px;align-items:center;background:#fbfcfa}
+.folder svg{width:22px;height:22px;fill:#e8c66a;flex-shrink:0}
+.folder small{display:block;color:var(--muted)}
+textarea.transcript{width:100%;min-height:170px;border:1px solid var(--line);border-radius:8px;padding:10px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;resize:vertical}
+.ai-box{border:1px solid #bfe0da;background:#f3faf8;border-radius:var(--r);padding:16px;margin-top:14px}
+.ai-box h4{margin:0 0 8px;font-size:13px;color:var(--accent);display:flex;align-items:center;gap:6px}
+.ai-box ul{margin:4px 0 10px;padding-left:18px}
+.ai-box li{margin-bottom:4px}
+.cal{display:grid;grid-template-columns:52px repeat(5,1fr);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:#fff}
+.cal .h{padding:10px;font-weight:600;border-bottom:1px solid var(--line);background:#fafbf9;font-size:13px}
+.cal .h small{display:block;color:var(--muted);font-weight:400}
+.cal .h.today{color:var(--accent)}
+.cal .t{font-size:11px;color:var(--muted);padding:4px 6px;border-top:1px solid #f0f2ef;height:46px}
+.cal .c{border-top:1px solid #f0f2ef;border-left:1px solid #f0f2ef;height:46px;position:relative}
+.ev{position:absolute;left:4px;right:4px;border-radius:6px;padding:3px 7px;font-size:12px;line-height:1.3;overflow:hidden;z-index:1;border-left:3px solid}
+.ev.meet{background:var(--accent-soft);border-color:var(--accent)}
+.ev.task{background:var(--amber-soft);border-color:var(--amber)}
+.ev.ol{background:var(--blue-soft);border-color:var(--blue)}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--muted);margin-top:10px;flex-wrap:wrap}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px;background:var(--c)}
+/* diagram */
+.diag-wrap{display:grid;grid-template-columns:180px 1fr 260px;gap:14px;align-items:start}
+.palette .ico{display:flex;align-items:center;gap:8px;padding:7px 8px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px;cursor:pointer;background:#fff;width:100%;text-align:left}
+.palette .ico:hover{border-color:var(--accent)}
+.palette svg{width:26px;height:26px;flex-shrink:0}
+#canvas{background:#fff;border:1px solid var(--line);border-radius:var(--r);width:100%;aspect-ratio:16/10;display:block;
+  background-image:radial-gradient(#dde2de 1px,transparent 1px);background-size:20px 20px;touch-action:none;user-select:none;-webkit-user-select:none}
+#canvas text{font-family:'IBM Plex Sans',system-ui,sans-serif}
+.node{cursor:grab}
+.lnk{cursor:pointer}
+.inspector .row{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
+.inspector .row:last-child{border:0}
+.inspector .row b{font-weight:500;text-align:right}
+.hops{font-size:13px;line-height:1.7}
+.hops .hop{display:flex;gap:8px;align-items:baseline}
+.hops .hop i{font-style:normal;color:var(--accent);font-weight:600;width:16px}
+.report{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:28px 32px;max-width:820px;line-height:1.6}
+.report h2{margin:0 0 4px;font-size:20px}
+.report h4{margin:20px 0 6px;font-size:14px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.modal-bg{position:fixed;inset:0;background:rgba(20,32,28,.45);display:none;align-items:center;justify-content:center;z-index:50;padding:12px}
+.modal-bg.show{display:flex}
+.modal{background:#fff;border-radius:12px;padding:22px;width:min(500px,100%);max-height:92vh;overflow:auto}
+.modal h3{margin:0 0 14px}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+.field input,.field select,.field textarea{width:100%}
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.toast{position:fixed;bottom:22px;right:22px;background:var(--side);color:#fff;padding:10px 16px;border-radius:8px;opacity:0;transition:.25s;pointer-events:none;z-index:60;max-width:80vw}
+.toast.show{opacity:1}
+.note{font-size:12px;color:var(--muted);background:#fff;border:1px dashed var(--line);border-radius:8px;padding:8px 12px;margin-top:14px}
+.chat{display:flex;gap:8px;margin-top:12px}
+.chat input{flex:1;min-width:0;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.chat-out{margin-top:10px;font-size:13.5px;white-space:pre-wrap;line-height:1.55}
+.empty{text-align:center;padding:40px 20px;color:var(--muted)}
+@media(max-width:1180px){.diag-wrap{grid-template-columns:150px 1fr}.diag-wrap .inspector{grid-column:1/-1}}
+@media(max-width:1000px){.kpis{grid-template-columns:repeat(2,1fr)}.two{grid-template-columns:1fr}}
+@media(max-width:760px){
+  body{display:block}
+  aside{position:fixed;bottom:0;left:0;right:0;top:auto;height:auto;width:auto;flex-direction:row;padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:40}
+  .brand,.side-foot{display:none}
+  nav{display:flex;width:100%;justify-content:space-around}
+  nav a{flex-direction:column;gap:2px;font-size:10px;padding:6px 4px;margin:0}
+  nav a svg{width:20px;height:20px}
+  nav .badge{position:absolute;top:0;right:2px;margin:0;font-size:10px;padding:0 5px}
+  main{height:auto;min-height:100vh;padding:18px 14px 90px}
+  h1{font-size:21px}
+  .kpi .n{font-size:22px}
+  .card{padding:14px}
+  .diag-wrap{grid-template-columns:1fr}
+  .palette{display:flex;gap:6px;overflow-x:auto}
+  .palette .ico{width:auto;margin:0;flex-shrink:0}
+  .palette .note{display:none}
+  #canvas{aspect-ratio:4/3}
+  .prow{grid-template-columns:1fr 70px 38px}
+  .report{padding:18px}
+  .toast{left:14px;right:14px;bottom:80px}
+  .mob-sync{display:flex!important}
+}
+.mob-sync{display:none;font-size:12px;margin-bottom:10px}
+</style>
+</head>
+<body>
+
+<aside>
+  <div class="brand"><div class="dot">PP</div>Portal de Proyectos</div>
+  <nav id="nav"></nav>
+  <div class="side-foot"><div class="sync" id="sync"><i></i><span>Conectando…</span></div><div id="syncNote" class="muted" style="margin-top:4px"></div></div>
+</aside>
+
+<main id="main"></main>
+
+<div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ============ Utilidades de fecha ============
+const TODAY = new Date(); TODAY.setHours(0,0,0,0);
+const pad = n => String(n).padStart(2,'0');
+const isoOf = x => `${x.getFullYear()}-${pad(x.getMonth()+1)}-${pad(x.getDate())}`;
+const d = n => { const x=new Date(TODAY); x.setDate(x.getDate()+n); return isoOf(x); };
+const parseISO = iso => new Date(iso+'T00:00');
+const mon = iso => parseISO(iso).toLocaleDateString('es-CL',{month:'short'}).replace('.','');
+const fmt = iso => iso ? parseISO(iso).getDate()+' '+mon(iso) : '—';
+const daysTo = iso => Math.round((parseISO(iso) - TODAY)/86400000);
+
+// ============ Estado ============
+const S = {projects:{},tasks:{},meetings:{},diagrams:{}};
+const KIND = {project:'projects',task:'tasks',meeting:'meetings',diagram:'diagrams'};
+let DB = null, AI = null, MCP = null, mode = 'loading', pending = false, dragging = false;
+const uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2,5);
+const projects = () => Object.values(S.projects).sort((a,b)=>a.id.localeCompare(b.id));
+const tasks = () => Object.values(S.tasks);
+const meetings = () => Object.values(S.meetings);
+
+// ============ Persistencia (nube con respaldo local) ============
+const docId = (kind,id) => (kind+'-'+id).replace(/[^A-Za-z0-9_\-.~:@+]/g,'_');
+function localSave(){ if(mode!=='local') return; try{ localStorage.setItem('pp-local', JSON.stringify(S)); }catch(e){} }
+async function put(kind, obj){
+  S[KIND[kind]][obj.id] = obj;
+  if(mode==='cloud'){
+    try{ await DB.collection('items').doc(docId(kind,obj.id)).set({...obj, kind}); }
+    catch(e){ handleDbErr(e); }
+  } else localSave();
+}
+async function del(kind, id){
+  delete S[KIND[kind]][id];
+  if(mode==='cloud'){ try{ await DB.collection('items').doc(docId(kind,id)).delete(); }catch(e){ handleDbErr(e); } }
+  else localSave();
+}
+function handleDbErr(e){
+  const c = e && e.code;
+  if(c==='quota_exceeded') toast('Se llenó el espacio de datos: borra elementos antiguos');
+  else if(c==='invalid_argument') toast('No tienes permiso para guardar aquí');
+  else toast('No se pudo guardar. Revisa tu conexión');
+}
+function setSync(state, note){
+  const el = document.getElementById('sync'); el.className = 'sync '+(state==='cloud'?'on':state==='local'?'off':'');
+  el.querySelector('span').textContent = state==='cloud'?'Sincronizado en la nube':state==='local'?'Solo este dispositivo':'Conectando…';
+  document.getElementById('syncNote').textContent = note||'';
+}
+async function initData(){
+  const use = n => (window.claude && typeof window.claude.use==='function') ? window.claude.use(n).catch(()=>null) : Promise.resolve(null);
+  use('sample').then(s => { AI = s; if(s) render(); });
+  use('mcp').then(m => { MCP = m; if(m && current==='calendario') render(); });
+  DB = await use('db');
+  if(!DB){ return goLocal('Abre el portal desde claude.ai (PC o celular) para sincronizar.'); }
+  let first = true;
+  const timer = setTimeout(()=>{ if(first) setSync('loading','La nube tarda en responder…'); }, 10000);
+  DB.collection('items').onSnapshot(snap => {
+    for(const k in S) S[k] = {};
+    snap.docs.forEach(doc => { const v = doc.data(); const bucket = KIND[v && v.kind]; if(bucket && v.id) S[bucket][v.id] = JSON.parse(JSON.stringify(v)); });
+    if(!snap.metadata.fromCache){ clearTimeout(timer); first=false; }
+    mode = 'cloud'; setSync('cloud', snap.metadata.fromCache ? 'Mostrando copia guardada…' : 'Tus cambios aparecen en todos tus dispositivos.');
+    scheduleRender();
+  }, err => { clearTimeout(timer); goLocal(err && err.code==='revoked' ? 'Acceso a la nube retirado.' : 'No se pudo conectar a la nube.'); });
+}
+function goLocal(note){
+  mode = 'local';
+  try{ const saved = JSON.parse(localStorage.getItem('pp-local')); if(saved) Object.assign(S, saved); }catch(e){}
+  setSync('local', note); render();
+}
+function isEditing(){
+  const a = document.activeElement;
+  return dragging || document.getElementById('modalBg').classList.contains('show') ||
+    (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && document.getElementById('main').contains(a) && a.value);
+}
+function scheduleRender(){ if(isEditing()){ pending = true; return; } pending=false; render(); }
+document.addEventListener('focusout', () => setTimeout(()=>{ if(pending && !isEditing()) scheduleRender(); }, 80));
+
+// ============ UI helpers ============
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pName = id => (S.projects[id]||{}).name || id || '—';
+function toast(t){ const el=$('#toast'); el.textContent=t; el.classList.add('show'); clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove('show'),2600); }
+function statusPill(s){ const m={'En curso':'p-acc','En riesgo':'p-warn','Planificación':'p-grey','Cerrado':'p-ok'}; return `<span class="pill ${m[s]||'p-grey'}">${esc(s)}</span>`; }
+function duePill(t){ if(t.done) return '<span class="pill p-ok">Hecho</span>'; if(!t.due) return ''; const n=daysTo(t.due); if(n<0) return `<span class="pill p-warn">Vencido ${-n}d</span>`; if(n<=3) return `<span class="pill p-amber">${n===0?'Hoy':'En '+n+'d'}</span>`; return `<span class="pill p-grey">${fmt(t.due)}</span>`; }
+const overdue = () => tasks().filter(t=>!t.done && t.due && daysTo(t.due)<0);
+const projOptions = sel => projects().map(p=>`<option value="${esc(p.id)}" ${sel===p.id?'selected':''}>${esc(p.id)} · ${esc(p.name)}</option>`).join('');
+function chip(iso, cls=''){ return `<div class="date-chip ${cls}">${parseISO(iso).getDate()}<small>${mon(iso)}</small></div>`; }
+function aiOff(){ return '<div class="note">Claude se activa cuando abres el portal desde claude.ai. Aquí se usa la versión simple con reglas.</div>'; }
+function lightMd(t){ return esc(t).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/^#{1,4}\s*(.+)$/gm,'<b>$1</b>').replace(/^[-•]\s+/gm,'• '); }
+function dataContext(){
+  return JSON.stringify({
+    hoy: isoOf(TODAY),
+    proyectos: projects().map(p=>({id:p.id,nombre:p.name,area:p.client,estado:p.status,avance:p.progress,cierre:p.end})),
+    pendientes: tasks().map(t=>({proyecto:t.project,tarea:t.text,responsable:t.owner,fecha:t.due,prioridad:t.prio,hecho:!!t.done,origen:t.origin})),
+    reuniones: meetings().map(m=>({proyecto:m.project,titulo:m.title,fecha:m.date,hora:m.time,resumen:m.summary||''}))
+  });
+}
+
+// ============ Navegación ============
+const ICON = {
+  dashboard:'<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
+  proyectos:'<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  reuniones:'<path d="M4 5h16v11H8l-4 4z"/><path d="M8 9h8M8 12h5"/>',
+  pendientes:'<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/>',
+  calendario:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  diagramas:'<rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-4h12v4"/>',
+  reportes:'<path d="M5 20V10M12 20V4M19 20v-7"/>'
+};
+const VIEWS = [['dashboard','Inicio'],['proyectos','Proyectos'],['reuniones','Reuniones'],['pendientes','Pendientes'],['calendario','Agenda'],['diagramas','Diagramas'],['reportes','Reportes']];
+let current = 'dashboard', openProject = null;
+function renderNav(){
+  const od = overdue().length;
+  $('#nav').innerHTML = VIEWS.map(([k,l]) =>
+    `<a data-v="${k}" class="${current===k?'active':''}"><svg viewBox="0 0 24 24">${ICON[k]}</svg>${l}${k==='pendientes'&&od?`<span class="badge">${od}</span>`:''}</a>`).join('');
+  document.querySelectorAll('#nav a').forEach(a => a.onclick = () => go(a.dataset.v));
+}
+function go(v){ current=v; if(v!=='proyectos') openProject=null; try{ location.hash = v; }catch(e){} render(); }
+window.addEventListener('hashchange', () => { const h=location.hash.slice(1); if(VIEWS.some(v=>v[0]===h) && h!==current){ current=h; render(); }});
+const mobile = () => window.innerWidth < 760;
+function syncLine(){ return `<div class="mob-sync sync ${mode==='cloud'?'on':mode==='local'?'off':''}"><i></i><span>${mode==='cloud'?'Sincronizado':mode==='local'?'Solo este dispositivo':'Conectando…'}</span></div>`; }
+function render(){
+  renderNav(); const m=$('#main');
+  if(mode==='loading'){ m.innerHTML = '<div class="empty">Cargando tus proyectos…</div>'; return; }
+  ({dashboard,proyectos,reuniones,pendientes,calendario,diagramas,reportes})[current](m);
+  m.insertAdjacentHTML('afterbegin', syncLine());
+}
+
+// ============ Inicio ============
+function dashboard(m){
+  const act = projects().filter(p=>p.status!=='Cerrado');
+  const open = tasks().filter(t=>!t.done);
+  const upcoming = meetings().filter(x=>daysTo(x.date)>=0).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time)).slice(0,4);
+  const avg = Math.round(act.reduce((s,p)=>s+(+p.progress||0),0)/(act.length||1));
+  const h = new Date().getHours();
+  m.innerHTML = `
+  <div class="top"><div><h1>${h<12?'Buenos días':h<20?'Buenas tardes':'Buenas noches'}, Alexis</h1><div class="sub">${TODAY.toLocaleDateString('es-CL',{weekday:'long',day:'numeric',month:'long'})}</div></div>
+  <button class="btn primary" id="qTask">+ Nuevo pendiente</button></div>
+  ${!projects().length ? `<div class="card empty">Aún no hay proyectos. Crea el primero en <b>Proyectos</b>.</div>` : ''}
+  <div class="grid kpis">
+    <div class="card kpi"><div class="l">Proyectos activos</div><div class="n">${act.length}</div></div>
+    <div class="card kpi"><div class="l">Avance promedio</div><div class="n">${avg}%</div></div>
+    <div class="card kpi"><div class="l">Pendientes abiertos</div><div class="n">${open.length}</div></div>
+    <div class="card kpi"><div class="l">Vencidos</div><div class="n" style="color:var(--warn)">${overdue().length}</div></div>
+  </div>
+  <div class="grid two" style="margin-top:16px">
+    <div class="card"><h3>Avance por proyecto</h3>
+      ${act.map(p=>`<div class="prow"><div><b style="font-weight:500">${esc(p.name)}</b><div class="muted mono" style="font-size:12px">${esc(p.id)} · ${statusPill(p.status)}</div></div><div class="bar"><i style="width:${+p.progress||0}%"></i></div><div class="mono" style="text-align:right">${+p.progress||0}%</div></div>`).join('') || '<div class="muted">Sin proyectos activos</div>'}
+    </div>
+    <div class="grid" style="align-content:start">
+      <div class="card"><h3>Próximas reuniones</h3>
+        ${upcoming.map(x=>`<div class="list-item">${chip(x.date)}<div><div>${esc(x.title)}</div><div class="muted" style="font-size:12px">${esc(x.time)} · ${esc(x.project)}</div></div></div>`).join('') || '<div class="muted">Sin reuniones agendadas</div>'}
+      </div>
+      <div class="card"><h3>Pendientes urgentes</h3>
+        ${open.filter(t=>t.due && daysTo(t.due)<=3).sort((a,b)=>a.due.localeCompare(b.due)).map(t=>`<div class="list-item"><div class="chk" data-t="${esc(t.id)}"></div><div style="flex:1">${esc(t.text)}<div class="muted" style="font-size:12px">${esc(t.project)} · ${esc(t.owner)}</div></div>${duePill(t)}</div>`).join('') || '<div class="muted">Nada urgente 🎉</div>'}
+      </div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:16px"><h3>✦ Pregúntale a Claude</h3>
+    <div class="chat"><input id="ask" placeholder="Ej: ¿Qué debería priorizar esta semana?"><button class="btn primary" id="askBtn">Preguntar</button></div>
+    <div class="chat-out" id="askOut"></div>
+    ${AI ? '' : aiOff()}
+  </div>`;
+  $('#qTask').onclick = () => taskModal();
+  bindChecks();
+  const ask = async () => {
+    const q = $('#ask').value.trim(); if(!q) return; const out = $('#askOut');
+    if(AI){
+      $('#askBtn').disabled = true; out.textContent = 'Pensando…';
+      try{
+        await AI(`Eres el asistente de gestión de proyectos de Alexis, ingeniero de redes en Chile. Responde en español, breve y accionable (máximo 8 líneas, viñetas si ayudan). Usa solo estos datos del portal:\n${dataContext()}\n\nPregunta: ${q}`,
+          {onText:({text})=>{ out.innerHTML = lightMd(text); }, cache:false});
+      }catch(e){ out.textContent = e && e.code==='rate_limited' ? 'Claude está ocupado, intenta en un momento.' : e && e.code==='not_granted' ? 'Claude no está habilitado en esta vista.' : 'No se pudo consultar a Claude.'; }
+      $('#askBtn').disabled = false; return;
+    }
+    const ql=q.toLowerCase(); let r='';
+    if(ql.includes('venc')) r = overdue().length ? 'Pendientes vencidos:\n'+overdue().map(t=>`• ${t.text} (${t.project}, ${-daysTo(t.due)} días, ${t.owner})`).join('\n') : 'No tienes pendientes vencidos.';
+    else if(ql.includes('riesgo')) r = act.filter(p=>p.status==='En riesgo').map(p=>`• ${p.name}: ${p.progress}% y cierre el ${fmt(p.end)}`).join('\n') || 'Ningún proyecto en riesgo.';
+    else r = `${act.length} proyectos activos, avance promedio ${avg}%, ${open.length} pendientes (${overdue().length} vencidos).`;
+    out.textContent = r;
+  };
+  $('#askBtn').onclick = ask; $('#ask').onkeydown = e => { if(e.key==='Enter') ask(); };
+}
+
+// ============ Proyectos ============
+const FOLDERS = ['01_Gestion','02_Reuniones','03_Diagramas','04_Ingenieria','05_Reportes','06_Entregables'];
+function proyectos(m){
+  if(openProject && S.projects[openProject]) return projectDetail(m, S.projects[openProject]);
+  m.innerHTML = `<div class="top"><div><h1>Proyectos</h1><div class="sub">Cada proyecto trae su estructura de carpetas</div></div><button class="btn primary" id="newP">+ Nuevo proyecto</button></div>
+  <div class="card tbl" style="padding:6px 8px">${projects().length?`<table><thead><tr><th>ID</th><th>Proyecto</th><th>Área</th><th>Estado</th><th style="width:150px">Avance</th><th>Cierre</th><th>Abiertos</th></tr></thead><tbody>
+  ${projects().map(p=>{ const o=tasks().filter(t=>t.project===p.id&&!t.done).length; return `<tr class="click" data-id="${esc(p.id)}"><td class="mono">${esc(p.id)}</td><td><b style="font-weight:500">${esc(p.name)}</b></td><td class="muted">${esc(p.client)}</td><td>${statusPill(p.status)}</td><td><div class="bar"><i style="width:${+p.progress||0}%"></i></div><span class="muted mono" style="font-size:12px">${+p.progress||0}%</span></td><td>${fmt(p.end)}</td><td>${o}</td></tr>`}).join('')}
+  </tbody></table>`:'<div class="empty">Sin proyectos todavía</div>'}</div>`;
+  document.querySelectorAll('tr.click').forEach(r => r.onclick = () => { openProject=r.dataset.id; render(); });
+  $('#newP').onclick = () => projectModal();
+}
+function projectDetail(m,p){
+  const ts = tasks().filter(t=>t.project===p.id), ms = meetings().filter(x=>x.project===p.id);
+  const hasDiag = !!S.diagrams[p.id];
+  m.innerHTML = `<div class="top"><div><a class="muted" style="cursor:pointer" id="back">← Proyectos</a><h1 style="margin-top:6px">${esc(p.name)}</h1><div class="sub mono">${esc(p.id)} · ${esc(p.client)} · ${fmt(p.start)} → ${fmt(p.end)}</div></div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${statusPill(p.status)}<button class="btn sm" id="editP">Editar</button></div></div>
+  <div class="card" style="margin-bottom:16px"><label class="muted" style="font-size:13px;display:flex;align-items:center;gap:10px">Avance <input type="range" min="0" max="100" value="${+p.progress||0}" id="prog" style="flex:1"> <span id="progV" class="mono">${+p.progress||0}%</span></label></div>
+  <div class="card"><h3>Carpetas del proyecto</h3><div class="folders">${FOLDERS.map(f=>{
+     const n = f==='02_Reuniones'?ms.length:f==='03_Diagramas'?(hasDiag?1:0):0;
+     return `<div class="folder" ${f==='03_Diagramas'?'data-diag="1" style="cursor:pointer"':''}><svg viewBox="0 0 24 24"><path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><div>${f}<small>${n} archivo${n===1?'':'s'}</small></div></div>`}).join('')}</div></div>
+  <div class="grid two" style="margin-top:16px">
+    <div class="card"><h3>Pendientes (${ts.filter(t=>!t.done).length} abiertos)</h3>${taskList(ts)}</div>
+    <div class="card"><h3>Reuniones</h3>${ms.sort((a,b)=>b.date.localeCompare(a.date)).map(x=>`<div class="list-item">${chip(x.date)}<div><div>${esc(x.title)}</div><div class="muted" style="font-size:12px">${esc(x.summary||'Sin minuta aún')}</div></div></div>`).join('')||'<div class="muted">Sin reuniones</div>'}</div>
+  </div>`;
+  $('#back').onclick = () => { openProject=null; render(); };
+  const pr = $('#prog'); pr.oninput = e => { $('#progV').textContent=e.target.value+'%'; };
+  pr.onchange = e => { put('project', {...p, progress:+e.target.value}); };
+  $('#editP').onclick = () => projectModal(p);
+  const df = document.querySelector('[data-diag]'); if(df) df.onclick = () => { diagProject = p.id; go('diagramas'); };
+  bindChecks();
+}
+function projectModal(p){
+  const isNew = !p; p = p || {status:'Planificación',progress:0,start:d(0),end:d(30),client:''};
+  modal(`<h3>${isNew?'Nuevo proyecto':'Editar proyecto'}</h3>
+  <div class="field"><label>Nombre</label><input id="f_name" value="${esc(p.name||'')}" placeholder="Ej: Cableado estructurado sala servidores"></div>
+  <div class="field"><label>Área / cliente</label><input id="f_client" value="${esc(p.client)}"></div>
+  <div class="frow"><div class="field"><label>Inicio</label><input type="date" id="f_start" value="${esc(p.start)}"></div><div class="field"><label>Cierre</label><input type="date" id="f_end" value="${esc(p.end)}"></div></div>
+  <div class="field"><label>Estado</label><select id="f_status">${['Planificación','En curso','En riesgo','Cerrado'].map(s=>`<option ${p.status===s?'selected':''}>${s}</option>`).join('')}</select></div>
+  <div style="display:flex;gap:8px;justify-content:space-between">${isNew?'<span></span>':'<button class="btn" id="f_del" style="color:var(--warn)">Eliminar</button>'}<div style="display:flex;gap:8px"><button class="btn" data-close>Cancelar</button><button class="btn primary" id="f_ok">${isNew?'Crear con carpetas':'Guardar'}</button></div></div>`);
+  $('#f_ok').onclick = () => { const name=$('#f_name').value.trim(); if(!name) return;
+    let id = p.id;
+    if(isNew){ let n = projects().length+1; do{ id='PRY-'+String(n++).padStart(3,'0'); }while(S.projects[id]); }
+    put('project', {...p, id, name, client:$('#f_client').value||'—', start:$('#f_start').value, end:$('#f_end').value, status:$('#f_status').value, owner:'Alexis'});
+    closeModal(); toast(isNew? id+' creado con 6 carpetas':'Proyecto actualizado'); render(); };
+  if(!isNew) $('#f_del').onclick = () => { confirmBox(`¿Eliminar ${p.id} y sus pendientes?`, () => { tasks().filter(t=>t.project===p.id).forEach(t=>del('task',t.id)); del('project',p.id); openProject=null; render(); toast('Proyecto eliminado'); }); };
+}
+
+// ============ Pendientes ============
+let tFilter = {project:'',state:'abiertos'};
+function taskList(ts){
+  return ts.sort((a,b)=>(a.done-b.done)||String(a.due).localeCompare(String(b.due))).map(t=>`<div class="list-item"><div class="chk ${t.done?'on':''}" data-t="${esc(t.id)}">${t.done?'✓':''}</div><div style="flex:1"><div class="${t.done?'done-text':''}">${esc(t.text)}</div><div class="muted" style="font-size:12px">${esc(t.owner)} · ${esc(t.origin)}</div></div>${duePill(t)}</div>`).join('') || '<div class="muted">Sin pendientes</div>';
+}
+function bindChecks(){ document.querySelectorAll('.chk').forEach(c => c.onclick = e => { e.stopPropagation(); const t=S.tasks[c.dataset.t]; if(!t) return; put('task',{...t, done:!t.done}); render(); }); }
+function pendientes(m){
+  let ts = tasks().filter(t=>(!tFilter.project||t.project===tFilter.project) && (tFilter.state==='todos'||(tFilter.state==='abiertos'?!t.done:t.done)));
+  m.innerHTML = `<div class="top"><div><h1>Pendientes</h1><div class="sub">Lo que sale de cada reunión llega aquí con su origen</div></div><button class="btn primary" id="nt">+ Nuevo pendiente</button></div>
+  <div class="toolbar"><select id="fp"><option value="">Todos los proyectos</option>${projOptions(tFilter.project)}</select>
+  <select id="fs">${['abiertos','cerrados','todos'].map(s=>`<option ${tFilter.state===s?'selected':''}>${s}</option>`).join('')}</select></div>
+  <div class="card tbl" style="padding:6px 8px">${mobile() ? taskList(ts) : `<table><thead><tr><th style="width:30px"></th><th>Pendiente</th><th>Proyecto</th><th>Responsable</th><th>Prioridad</th><th>Origen</th><th>Fecha</th><th></th></tr></thead><tbody>
+  ${ts.sort((a,b)=>String(a.due).localeCompare(String(b.due))).map(t=>`<tr><td><div class="chk ${t.done?'on':''}" data-t="${esc(t.id)}">${t.done?'✓':''}</div></td><td class="${t.done?'done-text':''}">${esc(t.text)}</td><td class="mono">${esc(t.project)}</td><td>${esc(t.owner)}</td><td><span class="pill ${t.prio==='Alta'?'p-warn':t.prio==='Media'?'p-amber':'p-grey'}">${esc(t.prio)}</span></td><td class="muted">${esc(t.origin)}</td><td>${duePill(t)}</td><td><button class="btn sm" data-edit="${esc(t.id)}">Editar</button></td></tr>`).join('') || '<tr><td colspan="8" class="muted">Sin resultados</td></tr>'}
+  </tbody></table>`}</div>`;
+  $('#fp').onchange = e => { tFilter.project=e.target.value; render(); };
+  $('#fs').onchange = e => { tFilter.state=e.target.value; render(); };
+  $('#nt').onclick = () => taskModal();
+  document.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => taskModal(S.tasks[b.dataset.edit]));
+  bindChecks();
+}
+function taskModal(t){
+  const isNew = !t; t = t || {text:'',project:tFilter.project||(projects()[0]||{}).id,owner:'Alexis',due:d(7),prio:'Media',done:false,origin:'Manual'};
+  modal(`<h3>${isNew?'Nuevo pendiente':'Editar pendiente'}</h3>
+  <div class="field"><label>Tarea</label><input id="t_text" value="${esc(t.text)}"></div>
+  <div class="field"><label>Proyecto</label><select id="t_p">${projOptions(t.project)}</select></div>
+  <div class="frow"><div class="field"><label>Responsable</label><input id="t_o" value="${esc(t.owner)}"></div>
+  <div class="field"><label>Fecha</label><input type="date" id="t_d" value="${esc(t.due)}"></div></div>
+  <div class="field"><label>Prioridad</label><select id="t_pr">${['Alta','Media','Baja'].map(x=>`<option ${t.prio===x?'selected':''}>${x}</option>`).join('')}</select></div>
+  <div style="display:flex;gap:8px;justify-content:space-between">${isNew?'<span></span>':'<button class="btn" id="t_del" style="color:var(--warn)">Eliminar</button>'}<div style="display:flex;gap:8px"><button class="btn" data-close>Cancelar</button><button class="btn primary" id="t_ok">Guardar</button></div></div>`);
+  $('#t_ok').onclick = () => { const text=$('#t_text').value.trim(); if(!text) return;
+    put('task', {...t, id:t.id||uid('t'), text, project:$('#t_p').value, owner:$('#t_o').value, due:$('#t_d').value, prio:$('#t_pr').value});
+    closeModal(); toast('Pendiente guardado'); render(); };
+  if(!isNew) $('#t_del').onclick = () => { del('task', t.id); closeModal(); render(); toast('Pendiente eliminado'); };
+}
+
+// ============ Reuniones ============
+let lastAnalysis = null, analyzing = false;
+function reuniones(m){
+  const list = meetings().sort((a,b)=>b.date.localeCompare(a.date));
+  m.innerHTML = `<div class="top"><div><h1>Reuniones</h1><div class="sub">Pega o sube la transcripción de Fireflies y Claude arma la minuta</div></div></div>
+  <div class="grid two">
+    <div class="card"><h3>Procesar transcripción</h3>
+      <div class="toolbar"><select id="m_p">${projOptions()}</select>
+      <input id="m_t" placeholder="Título de la reunión" style="flex:1;min-width:160px">
+      <label class="btn sm" style="cursor:pointer">Subir .txt / .vtt<input type="file" id="m_f" accept=".txt,.vtt,.srt,.md,text/plain" hidden></label></div>
+      <textarea class="transcript" id="m_txt" placeholder="[00:00:12] Nombre: texto de la transcripción…"></textarea>
+      <div style="display:flex;justify-content:flex-end;margin-top:10px"><button class="btn primary" id="m_go">✦ Analizar con Claude</button></div>
+      <div id="m_out"></div>
+      ${AI ? '' : aiOff()}
+    </div>
+    <div class="card"><h3>Historial</h3>${list.map(x=>`<div class="list-item">${chip(x.date)}<div style="flex:1"><div>${esc(x.title)} <span class="muted mono" style="font-size:12px">${esc(x.project)}</span></div><div class="muted" style="font-size:12px">${esc(x.summary || (daysTo(x.date)>=0?'Programada · '+x.time:'Sin minuta'))}</div></div></div>`).join('') || '<div class="muted">Sin reuniones</div>'}</div>
+  </div>`;
+  $('#m_f').onchange = e => { const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ $('#m_txt').value=r.result; if(!$('#m_t').value) $('#m_t').value=f.name.replace(/\.[^.]+$/,''); }; r.readAsText(f); };
+  $('#m_go').onclick = analyze;
+}
+function heuristic(text){
+  const lines = text.split('\n').map(l=>l.trim()).filter(Boolean);
+  const clean = l => l.replace(/^\[[^\]]*\]\s*/,'').replace(/^\d{1,2}:\d{2}(:\d{2})?\s*/,'');
+  const who = l => (clean(l).match(/^([^:]{2,30}):/)||[])[1] || 'Por asignar';
+  const body = l => clean(l).replace(/^[^:]{2,30}:\s*/,'');
+  return {
+    resumen: '',
+    acuerdos: lines.filter(l=>/acuerdo|confirma|acordamos|se define/i.test(l)).map(body),
+    riesgos: lines.filter(l=>/riesgo|problema|bloqueo|no tenemos/i.test(l)).map(body),
+    pendientes: lines.filter(l=>/pendiente|me comprometo|compromiso|queda|enviar|tarea/i.test(l)).map(l=>({responsable:who(l), texto:body(l).replace(/^(acuerdo|pendiente( mío)?|queda pendiente|yo me comprometo a)\s*:?\s*/i,''), dias:7}))
+  };
+}
+async function analyze(){
+  const txt = $('#m_txt').value.trim(); if(!txt || analyzing) return toast(txt?'Ya estoy analizando…':'Pega una transcripción primero');
+  const out = $('#m_out'), btn = $('#m_go'); let r;
+  if(AI){
+    analyzing = true; btn.disabled = true; out.innerHTML = '<div class="ai-box"><h4>✦ Claude está leyendo la reunión…</h4></div>';
+    try{
+      r = await AI.json(`Analiza esta transcripción de una reunión de un proyecto de redes/TI (Chile). Devuelve SOLO JSON con esta forma:
+{"resumen":"2-3 frases","acuerdos":["..."],"riesgos":["..."],"pendientes":[{"texto":"verbo + qué","responsable":"nombre","dias":número de días desde hoy para el plazo (usa lo que digan; si no dicen, 7)}]}
+Escribe en español. No inventes nada que no esté en la transcripción.
+Hoy es ${isoOf(TODAY)}.
+TRANSCRIPCIÓN:
+${txt.slice(0,60000)}`, {modelTier:'default'});
+    }catch(e){ r = null; toast(e && e.code==='rate_limited' ? 'Claude está ocupado; usé el análisis simple' : 'No se pudo consultar a Claude; usé el análisis simple'); }
+    analyzing = false; btn.disabled = false;
+  }
+  if(!r || typeof r!=='object') r = heuristic(txt);
+  r.acuerdos = Array.isArray(r.acuerdos)?r.acuerdos:[]; r.riesgos = Array.isArray(r.riesgos)?r.riesgos:[]; r.pendientes = Array.isArray(r.pendientes)?r.pendientes:[];
+  lastAnalysis = {...r, project:$('#m_p').value, title:$('#m_t').value||'Reunión '+fmt(d(0))};
+  out.innerHTML = `<div class="ai-box"><h4>✦ Minuta ${AI?'generada por Claude':'(análisis simple)'}</h4>
+   ${r.resumen?`<p style="margin:0 0 10px">${esc(r.resumen)}</p>`:''}
+   <b>Acuerdos</b><ul>${r.acuerdos.map(a=>`<li>${esc(a)}</li>`).join('')||'<li class="muted">Ninguno detectado</li>'}</ul>
+   <b>Riesgos</b><ul>${r.riesgos.map(a=>`<li>${esc(a)}</li>`).join('')||'<li class="muted">Ninguno detectado</li>'}</ul>
+   <b>Pendientes propuestos</b><ul>${r.pendientes.map(a=>`<li>${esc(a.texto)} — <i>${esc(a.responsable)}</i> <span class="muted">(${fmt(d(+a.dias||7))})</span></li>`).join('')||'<li class="muted">Ninguno detectado</li>'}</ul>
+   <button class="btn primary sm" id="m_save">Guardar minuta y crear ${r.pendientes.length} pendientes</button></div>`;
+  $('#m_save').onclick = async () => { const a=lastAnalysis; if(!a) return; lastAnalysis=null; const lbl='Reunión '+fmt(d(0));
+    for(const x of a.pendientes) await put('task',{id:uid('t'),project:a.project,text:String(x.texto||'').replace(/^\w/,c=>c.toUpperCase()),owner:x.responsable||'Por asignar',due:d(+x.dias||7),prio:'Media',done:false,origin:lbl});
+    await put('meeting',{id:uid('m'),project:a.project,title:a.title,date:d(0),time:'—',summary:a.resumen||a.acuerdos[0]||'Minuta guardada',agreements:a.acuerdos,risks:a.riesgos});
+    toast(a.pendientes.length+' pendientes creados'); render(); };
+}
+
+// ============ Agenda / Calendario ============
+let weekOffset = 0, olEvents = [], olState = 'idle', olWatch = null, olKey = '';
+function weekDays(){ const m0=new Date(TODAY); m0.setDate(m0.getDate()-((m0.getDay()+6)%7)+weekOffset*7); return [...Array(5)].map((_,i)=>{ const x=new Date(m0); x.setDate(x.getDate()+i); return x; }); }
+function findEvents(p){
+  if(!p) return [];
+  if(Array.isArray(p)) return p.filter(e=>e && typeof e==='object' && (e.subject||e.title) && e.start);
+  if(typeof p==='object'){ for(const k of ['events','value','items','results','data']) if(p[k]) { const r=findEvents(p[k]); if(r.length) return r; } }
+  return [];
+}
+function watchOutlook(days){
+  if(!MCP) return;
+  const after = isoOf(days[0]), before = d(daysTo(isoOf(days[4]))+1), key = after;
+  if(key===olKey) return; olKey = key;
+  if(olWatch) olWatch(); olState='loading'; olEvents=[];
+  try{
+    olWatch = MCP.watchTool('Microsoft 365','outlook_calendar_search',{query:'*',afterDateTime:after,beforeDateTime:before,limit:25,order:'oldest'}, ev => {
+      if(ev.type==='data'){
+        olEvents = findEvents(ev.result.payload).map(e=>{ const s=String((e.start&&e.start.dateTime)||e.start||''); return {title:e.subject||e.title, date:s.slice(0,10), time:s.slice(11,16)}; }).filter(e=>/^\d{4}-\d{2}-\d{2}$/.test(e.date));
+        olState='ok';
+      } else {
+        const c = ev.error && ev.error.code;
+        if(['needs_reauth','server_not_connected','blocked_by_policy','approval_required','not_in_manifest','selection_required'].includes(c)){ olEvents=[]; }
+        olState = c==='needs_reauth'?'reauth':c==='server_not_connected'?'noconn':c==='approval_required'?'approval':c==='not_in_manifest'?'denied':'error';
+      }
+      if(current==='calendario' && !isEditing()) render();
+    }, {cache:{staleTime:60000,gcTime:600000}, refetchInterval:300000});
+  }catch(e){ olState='error'; }
+}
+function olBanner(){
+  if(!MCP) return '<div class="note">Tu calendario de Outlook aparece aquí cuando abres el portal desde claude.ai.</div>';
+  const msg = {loading:'Leyendo tu calendario de Outlook…', reauth:'Vuelve a conectar Microsoft 365 en claude.ai → Configuración → Conectores.', noconn:'Agrega Microsoft 365 en claude.ai → Configuración → Conectores.', approval:'Falta tu aprobación para leer el calendario.', denied:'El acceso a Outlook está desactivado para este portal.', error:'No se pudo leer Outlook ahora.'}[olState];
+  return msg ? `<div class="note">${msg} ${olState==='approval'?'<button class="btn sm" id="olAllow">Permitir</button>':''}</div>` : '';
+}
+function calendario(m){
+  const days = weekDays(); watchOutlook(days);
+  const hours = [...Array(11)].map((_,i)=>8+i);
+  const evAt = (dayIso) => [
+    ...meetings().filter(e=>e.date===dayIso).map(e=>({...e,cls:'meet'})),
+    ...olEvents.filter(e=>e.date===dayIso).map(e=>({...e,cls:'ol',project:'Outlook'}))];
+  let head = `<div class="top"><div><h1>Agenda</h1><div class="sub">Reuniones del portal, vencimientos y tu Outlook</div></div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" id="wp">←</button><button class="btn sm" id="wt">Hoy</button><button class="btn sm" id="wn">→</button><button class="btn primary sm" id="wa">+ Agendar</button></div></div>`;
+  let body = '';
+  if(mobile()){
+    body = days.map(x=>{ const di=isoOf(x); const evs=evAt(di).sort((a,b)=>String(a.time).localeCompare(String(b.time))); const tks=tasks().filter(t=>!t.done&&t.due===di);
+      return `<div class="card" style="margin-bottom:10px"><h3 style="${di===isoOf(TODAY)?'color:var(--accent)':''}">${x.toLocaleDateString('es-CL',{weekday:'long',day:'numeric',month:'short'})}</h3>
+      ${evs.map(e=>`<div class="list-item"><span class="pill ${e.cls==='ol'?'p-blue':'p-acc'}">${esc(e.time||'—')}</span><div>${esc(e.title)}<div class="muted" style="font-size:12px">${esc(e.project)}</div></div></div>`).join('')}
+      ${tks.map(t=>`<div class="list-item"><span class="pill p-amber">⚑</span><div>${esc(t.text)}<div class="muted" style="font-size:12px">${esc(t.project)}</div></div></div>`).join('')}
+      ${!evs.length&&!tks.length?'<div class="muted">Libre</div>':''}</div>`; }).join('');
+  } else {
+    body = `<div class="cal"><div class="h"></div>${days.map(x=>`<div class="h ${isoOf(x)===isoOf(TODAY)?'today':''}">${x.toLocaleDateString('es-CL',{weekday:'short'})}<small>${x.getDate()} ${mon(isoOf(x))}</small></div>`).join('')}`;
+    hours.forEach(h => {
+      body += `<div class="t">${h}:00</div>`;
+      days.forEach(x => {
+        const di = isoOf(x);
+        const evs = evAt(di).filter(e=>parseInt(e.time)===h);
+        const tks = h===8 ? tasks().filter(t=>!t.done && t.due===di) : [];
+        body += `<div class="c">${evs.map((e,i)=>{const mm=parseInt(String(e.time).split(':')[1])||0;return `<div class="ev ${e.cls}" style="top:${mm/60*46+2+i*4}px;height:40px"><b>${esc(e.title)}</b><br><span class="muted">${esc(e.time)} · ${esc(e.project)}</span></div>`}).join('')}${tks.map((t,i)=>`<div class="ev task" style="top:${2+i*22}px;height:20px">⚑ ${esc(t.text)}</div>`).join('')}</div>`;
+      });
+    });
+    body += '</div>';
+  }
+  m.innerHTML = head + body + `<div class="legend"><span style="--c:var(--accent)">Reuniones del portal</span><span style="--c:var(--blue)">Outlook</span><span style="--c:var(--amber)">Vencimientos</span></div>` + olBanner();
+  $('#wp').onclick=()=>{weekOffset--;render();}; $('#wn').onclick=()=>{weekOffset++;render();}; $('#wt').onclick=()=>{weekOffset=0;render();};
+  const al = $('#olAllow'); if(al) al.onclick = async () => { try{ await MCP.callTool('Microsoft 365','outlook_calendar_search',{query:'*',afterDateTime:isoOf(days[0]),beforeDateTime:isoOf(days[4]),limit:25,order:'oldest'}); olKey=''; render(); }catch(e){ toast('Sigue sin permiso'); } };
+  $('#wa').onclick = meetModal;
+}
+function meetModal(){
+  modal(`<h3>Agendar reunión</h3>
+    <div class="field"><label>Título</label><input id="e_t"></div>
+    <div class="field"><label>Proyecto</label><select id="e_p">${projOptions()}</select></div>
+    <div class="frow"><div class="field"><label>Fecha</label><input type="date" id="e_d" value="${d(1)}"></div><div class="field"><label>Hora</label><input type="time" id="e_h" value="10:00"></div></div>
+    <div class="field"><label>Duración</label><select id="e_dur"><option value="30">30 min</option><option value="60" selected>1 hora</option><option value="90">1 h 30</option></select></div>
+    ${MCP?'<label style="display:flex;gap:8px;align-items:center;margin-bottom:14px;font-size:13px"><input type="checkbox" id="e_ol" checked> Crear también en mi calendario de Outlook</label>':''}
+    <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" data-close>Cancelar</button><button class="btn primary" id="e_ok">Agendar</button></div>`);
+  $('#e_ok').onclick = async () => { const t=$('#e_t').value.trim(); if(!t) return;
+    const date=$('#e_d').value, time=$('#e_h').value, dur=+$('#e_dur').value, proj=$('#e_p').value;
+    const toOl = $('#e_ol') && $('#e_ol').checked; $('#e_ok').disabled = true;
+    await put('meeting',{id:uid('m'),project:proj,title:t,date,time,summary:''});
+    if(toOl){
+      const st = new Date(date+'T'+time); const en = new Date(st.getTime()+dur*60000);
+      const loc = x => `${isoOf(x)}T${pad(x.getHours())}:${pad(x.getMinutes())}:00`;
+      try{ await MCP.callTool('Microsoft 365','outlook_create_event',{subject:`[${proj}] ${t}`,start:{dateTime:loc(st),timeZone:'America/Santiago'},end:{dateTime:loc(en),timeZone:'America/Santiago'}}); toast('Agendada en el portal y en Outlook'); MCP.invalidate('Microsoft 365','outlook_calendar_search').catch(()=>{}); }
+      catch(e){ const c=e&&e.code; toast(c==='needs_reauth'?'Reconecta Microsoft 365 en claude.ai':c==='approval_required'?'Outlook necesita tu aprobación':c==='server_unavailable'||c==='upstream_error'?'Outlook no respondió: revisa si se creó antes de reintentar':'Guardada en el portal; no se pudo crear en Outlook'); }
+    } else toast('Reunión agendada');
+    closeModal(); render(); };
+}
+
+// ============ Diagramas ============
+const SHAPES = {
+  router:{n:'Router',svg:'<circle cx="20" cy="20" r="15" fill="#e3f2ef" stroke="#0f7b6c" stroke-width="2"/><path d="M12 17h16M24 13l4 4-4 4M28 23H12M16 19l-4 4 4 4" fill="none" stroke="#0f7b6c" stroke-width="2"/>'},
+  switch:{n:'Switch',svg:'<rect x="4" y="11" width="32" height="18" rx="3" fill="#e8eefc" stroke="#3056b8" stroke-width="2"/><path d="M10 17h20M30 17l-3-3M10 23h20M10 23l3 3" fill="none" stroke="#3056b8" stroke-width="2"/>'},
+  firewall:{n:'Firewall',svg:'<rect x="5" y="7" width="30" height="26" rx="2" fill="#fdeee5" stroke="#c2410c" stroke-width="2"/><path d="M5 15.5h30M5 24h30M15 7v8.5M25 15.5V24M15 24v9" stroke="#c2410c" stroke-width="2"/>'},
+  server:{n:'Servidor',svg:'<rect x="9" y="5" width="22" height="30" rx="2" fill="#f1eefb" stroke="#6b46c1" stroke-width="2"/><path d="M13 12h14M13 18h14M13 24h14" stroke="#6b46c1" stroke-width="2"/><circle cx="27" cy="30" r="1.5" fill="#6b46c1"/>'},
+  ap:{n:'Access Point',svg:'<ellipse cx="20" cy="27" rx="13" ry="5" fill="#fdf3e1" stroke="#b45309" stroke-width="2"/><path d="M13 16a10 10 0 0 1 14 0M16 20a5 5 0 0 1 8 0" fill="none" stroke="#b45309" stroke-width="2"/>'},
+  pc:{n:'PC / Usuario',svg:'<rect x="6" y="8" width="28" height="18" rx="2" fill="#eef0ed" stroke="#68716d" stroke-width="2"/><path d="M15 32h10M20 26v6" stroke="#68716d" stroke-width="2"/>'},
+  cloud:{n:'Nube / WAN',svg:'<path d="M12 30h17a7 7 0 0 0 0-14 9 9 0 0 0-17 2 6 6 0 0 0 0 12z" fill="#eef0ed" stroke="#68716d" stroke-width="2"/>'}
+};
+const MEDIA = {cobre:{c:'#8a948f',dash:''}, fibra:{c:'#e08a1e',dash:''}, wan:{c:'#6b46c1',dash:'8 6'}, wifi:{c:'#b45309',dash:'2 5'}};
+const SPEEDW = {'100M':2,'1G':3,'10G':4.5,'40G':5.5,'100G':6.5};
+const SPEEDBPS = {'100M':1e8,'1G':1e9,'10G':1e10,'40G':4e10,'100G':1e11};
+let diagProject = null, dSel = null, linkMode = false, linkFrom = null, traffic = true, route = null;
+const W = 1000, H = 625, NS = 64;
+function getDiagram(pid){ return S.diagrams[pid] || {id:pid, nodes:[], links:[]}; }
+function saveDiagram(dg){ put('diagram', JSON.parse(JSON.stringify(dg))); }
+function center(n){ return {x:n.x+NS/2, y:n.y+NS/2}; }
+function bfs(dg, a, b){
+  const adj = {}; dg.nodes.forEach(n=>adj[n.id]=[]); dg.links.forEach(l=>{ if(adj[l.a]&&adj[l.b]){ adj[l.a].push([l.b,l]); adj[l.b].push([l.a,l]); } });
+  const prev = {[a]:null}, q=[a];
+  while(q.length){ const u=q.shift(); if(u===b) break; for(const [v,l] of adj[u]||[]) if(!(v in prev)){ prev[v]=[u,l]; q.push(v); } }
+  if(!(b in prev)) return null;
+  const hops=[]; let cur=b; while(prev[cur]){ const [u,l]=prev[cur]; hops.unshift({from:u,to:cur,link:l}); cur=u; } return hops;
+}
+function diagramas(m){
+  if(!diagProject || !S.projects[diagProject]) diagProject = (projects().find(p=>S.diagrams[p.id])||projects()[0]||{}).id;
+  if(!diagProject){ m.innerHTML = '<div class="top"><h1>Diagramas de red</h1></div><div class="card empty">Crea un proyecto primero.</div>'; return; }
+  const dg = getDiagram(diagProject);
+  m.innerHTML = `<div class="top"><div><h1>Diagramas de red</h1><div class="sub">Equipos, interfaces y flujo de tráfico por proyecto</div></div>
+  <div class="toolbar" style="margin:0"><select id="dp">${projOptions(diagProject)}</select>
+  <button class="btn sm ${linkMode?'on':''}" id="dl">${linkMode?(linkFrom?'Elige el 2º equipo…':'Elige el 1er equipo…'):'⟷ Conectar'}</button>
+  <button class="btn sm ${traffic?'on':''}" id="dt">${traffic?'⏸ Tráfico':'▶ Tráfico'}</button>
+  <button class="btn sm" id="dx">Copiar tabla de interfaces</button></div></div>
+  <div class="diag-wrap">
+    <div class="palette">${Object.entries(SHAPES).map(([k,s])=>`<button class="ico" data-k="${k}"><svg viewBox="0 0 40 40">${s.svg}</svg>${s.n}</button>`).join('')}
+      <div class="note">Toca un ícono para agregarlo. Arrastra para mover. Toca un equipo o enlace para editarlo.</div></div>
+    <div><svg id="canvas" viewBox="0 0 ${W} ${H}"></svg>
+      <div class="ai-box"><h4>✦ Generar con Claude</h4><div class="chat" style="margin:0"><input id="dprompt" placeholder="Ej: agrega un servidor de monitoreo en Gi1/0/24 del Core-01 por 1G cobre"><button class="btn primary" id="dgen">Generar</button></div>${AI?'':aiOff()}</div>
+    </div>
+    <div class="inspector card" id="insp"></div>
+  </div>`;
+  drawDiagram(); renderInspector();
+  $('#dp').onchange = e => { diagProject=e.target.value; dSel=null; route=null; render(); };
+  document.querySelectorAll('.ico').forEach(b => b.onclick = () => {
+    const dg = getDiagram(diagProject); const id='n'+Date.now().toString(36);
+    const n = dg.nodes.length; dg.nodes.push({id,type:b.dataset.k,x:80+(n*97)%(W-200),y:60+Math.floor(n/8)*110%(H-160),label:SHAPES[b.dataset.k].n+' '+(n+1),ip:'',model:''});
+    dSel={kind:'node',id}; saveDiagram(dg); drawDiagram(); renderInspector(); });
+  $('#dl').onclick = () => { linkMode=!linkMode; linkFrom=null; diagramas(m); };
+  $('#dt').onclick = () => { traffic=!traffic; diagramas(m); };
+  $('#dx').onclick = async () => { const dg=getDiagram(diagProject); const N=Object.fromEntries(dg.nodes.map(n=>[n.id,n]));
+    const rows=['Equipo A\tInterfaz A\tEquipo B\tInterfaz B\tVelocidad\tMedio\tVLAN', ...dg.links.map(l=>[N[l.a]?.label,l.ifA,N[l.b]?.label,l.ifB,l.speed,l.media,l.vlan].map(x=>x||'').join('\t'))];
+    try{ await navigator.clipboard.writeText(rows.join('\n')); toast('Tabla copiada: pégala en Excel o en un documento'); }catch(e){ toast('No se pudo copiar'); } };
+  $('#dgen').onclick = genDiagram;
+}
+function drawDiagram(){
+  const c = $('#canvas'); if(!c) return;
+  const dg = getDiagram(diagProject);
+  const N = Object.fromEntries(dg.nodes.map(n=>[n.id,n]));
+  const routeLinks = new Map((route||[]).map(h=>[h.link.id, h]));
+  let svg = '<defs><filter id="glow"><feGaussianBlur stdDeviation="2.5"/></filter></defs>';
+  // enlaces
+  dg.links.forEach(l => {
+    const A=N[l.a], B=N[l.b]; if(!A||!B) return;
+    const a=center(A), b=center(B), md=MEDIA[l.media]||MEDIA.cobre, w=SPEEDW[l.speed]||3;
+    const sel = dSel && dSel.kind==='link' && dSel.id===l.id, inRoute = routeLinks.has(l.id);
+    const dx=b.x-a.x, dy=b.y-a.y, len=Math.hypot(dx,dy)||1, ux=dx/len, uy=dy/len, nx=-uy, ny=ux;
+    if(inRoute) svg += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="#0f7b6c" stroke-width="${w+8}" stroke-opacity=".25" stroke-linecap="round"/>`;
+    svg += `<g class="lnk" data-l="${esc(l.id)}"><line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="transparent" stroke-width="18"/>
+      <line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="${sel?'#0f7b6c':md.c}" stroke-width="${w}" stroke-dasharray="${md.dash}" stroke-linecap="round"/></g>`;
+    // tráfico animado
+    const util = Math.max(0, Math.min(100, +l.util||0));
+    const flows = inRoute ? [routeLinks.get(l.id).from===l.a ? 'a2b' : 'b2a'] : (traffic && util>0 ? (l.flow==='both'?['a2b','b2a']:l.flow==='none'?[]:[l.flow||'a2b']) : []);
+    flows.forEach((f,fi) => {
+      const [p,q] = f==='a2b'?[a,b]:[b,a]; const off = flows.length>1 ? (fi?5:-5) : 0;
+      const path = `M${p.x+nx*off} ${p.y+ny*off} L${q.x+nx*off} ${q.y+ny*off}`;
+      const count = inRoute ? 3 : Math.max(1, Math.round(util/25));
+      const dur = Math.max(.8, (len/150) * (inRoute?1:(1.6 - util/100)));
+      const col = inRoute ? '#0f7b6c' : util>80 ? '#c2410c' : util>50 ? '#d97706' : '#16a34a';
+      for(let i=0;i<count;i++) svg += `<circle r="${inRoute?5:4}" fill="${col}"><animateMotion dur="${dur.toFixed(2)}s" begin="${(-i*dur/count).toFixed(2)}s" repeatCount="indefinite" path="${path}"/></circle>`;
+    });
+    // etiquetas de interfaz
+    const lab = (t, p, s) => t ? `<text x="${p.x}" y="${p.y}" font-size="14" text-anchor="middle" fill="#1d2321" stroke="#fff" stroke-width="4" paint-order="stroke" class="mono">${esc(t)}</text>` : '';
+    const ga = Math.min(88, len*0.32);
+    svg += lab(l.ifA, {x:a.x+ux*ga+nx*12, y:a.y+uy*ga+ny*12+4});
+    svg += lab(l.ifB, {x:b.x-ux*ga+nx*12, y:b.y-uy*ga+ny*12+4});
+    const mid = [l.speed, l.vlan?('VLAN '+l.vlan):'', traffic&&util?util+'%':''].filter(Boolean).join(' · ');
+    if(mid && len>140) svg += `<text x="${(a.x+b.x)/2 - nx*14}" y="${(a.y+b.y)/2 - ny*14+4}" font-size="13" text-anchor="middle" fill="#68716d" stroke="#fff" stroke-width="4" paint-order="stroke">${esc(mid)}</text>`;
+  });
+  // equipos
+  dg.nodes.forEach(n => {
+    const sel = (dSel && dSel.kind==='node' && dSel.id===n.id) || linkFrom===n.id;
+    const inR = route && route.some(h=>h.from===n.id||h.to===n.id);
+    svg += `<g class="node" data-id="${esc(n.id)}" transform="translate(${n.x},${n.y})">
+      <rect x="-6" y="-6" width="${NS+12}" height="${NS+12}" rx="12" fill="#fff" stroke="${sel?'#0f7b6c':inR?'#7cc4b8':'transparent'}" stroke-width="2"/>
+      <svg width="${NS}" height="${NS}" viewBox="0 0 40 40">${(SHAPES[n.type]||SHAPES.switch).svg}</svg>
+      <text x="${NS/2}" y="${NS+20}" text-anchor="middle" font-size="16" font-weight="600" fill="#1d2321" stroke="#fff" stroke-width="4" paint-order="stroke">${esc(n.label)}</text>
+      ${n.ip?`<text x="${NS/2}" y="${NS+38}" text-anchor="middle" font-size="13" fill="#68716d" stroke="#fff" stroke-width="4" paint-order="stroke" class="mono">${esc(n.ip)}</text>`:''}
+    </g>`;
+  });
+  c.innerHTML = svg;
+  const toSvg = ev => { const pt=c.createSVGPoint(); pt.x=ev.clientX; pt.y=ev.clientY; return pt.matrixTransform(c.getScreenCTM().inverse()); };
+  c.querySelectorAll('.lnk').forEach(g => g.onclick = () => { if(linkMode) return; dSel={kind:'link',id:g.dataset.l}; drawDiagram(); renderInspector(); });
+  c.querySelectorAll('.node').forEach(g => {
+    g.onpointerdown = e => {
+      e.preventDefault();
+      const dg = getDiagram(diagProject), n = dg.nodes.find(x=>x.id===g.dataset.id); if(!n) return;
+      if(linkMode){
+        if(!linkFrom){ linkFrom=n.id; diagramas($('#main')); }
+        else if(linkFrom!==n.id){ const l={id:'l'+Date.now().toString(36),a:linkFrom,b:n.id,ifA:'',ifB:'',speed:'1G',media:'cobre',vlan:'',util:30,flow:'a2b'}; dg.links.push(l); linkFrom=null; linkMode=false; dSel={kind:'link',id:l.id}; saveDiagram(dg); diagramas($('#main')); toast('Enlace creado: define sus interfaces'); }
+        return;
+      }
+      const s=toSvg(e), ox=s.x-n.x, oy=s.y-n.y, sx=n.x, sy=n.y; dragging = true;
+      const mv = ev => { const p=toSvg(ev); n.x=Math.round(Math.max(0,Math.min(W-NS,p.x-ox))); n.y=Math.round(Math.max(0,Math.min(H-NS-40,p.y-oy))); S.diagrams[diagProject]=dg; drawDiagram(); };
+      const up = () => { window.removeEventListener('pointermove',mv); window.removeEventListener('pointerup',up); dragging=false;
+        dSel={kind:'node',id:n.id}; if(n.x!==sx||n.y!==sy) saveDiagram(dg); drawDiagram(); renderInspector(); if(pending) scheduleRender(); };
+      window.addEventListener('pointermove',mv); window.addEventListener('pointerup',up);
+    };
+  });
+}
+function renderInspector(){
+  const el = $('#insp'); if(!el) return;
+  const dg = getDiagram(diagProject); const N = Object.fromEntries(dg.nodes.map(n=>[n.id,n]));
+  let html = '';
+  if(dSel && dSel.kind==='node' && N[dSel.id]){
+    const n = N[dSel.id]; const ls = dg.links.filter(l=>l.a===n.id||l.b===n.id);
+    html += `<h3>${esc(n.label)}</h3><div class="row"><span class="muted">Tipo</span><b>${esc((SHAPES[n.type]||{}).n)}</b></div><div class="row"><span class="muted">Modelo</span><b>${esc(n.model||'—')}</b></div><div class="row"><span class="muted">IP gestión</span><b class="mono">${esc(n.ip||'—')}</b></div>
+      <div style="margin:10px 0 6px;font-weight:500">Interfaces (${ls.length})</div>
+      ${ls.map(l=>{ const mine=l.a===n.id?l.ifA:l.ifB, other=N[l.a===n.id?l.b:l.a]; return `<div class="row"><span class="mono">${esc(mine||'¿?')}</span><b>→ ${esc(other?other.label:'')}</b></div>`; }).join('')||'<div class="muted">Sin conexiones</div>'}
+      <div style="display:flex;gap:6px;margin-top:12px"><button class="btn sm" id="ne">Editar</button><button class="btn sm" id="nd" style="color:var(--warn)">Eliminar</button></div>`;
+  } else if(dSel && dSel.kind==='link'){
+    const l = dg.links.find(x=>x.id===dSel.id);
+    if(l) html += `<h3>Enlace</h3><div class="row"><span class="muted">${esc(N[l.a]?.label)}</span><b class="mono">${esc(l.ifA||'—')}</b></div><div class="row"><span class="muted">${esc(N[l.b]?.label)}</span><b class="mono">${esc(l.ifB||'—')}</b></div>
+      <div class="row"><span class="muted">Velocidad</span><b>${esc(l.speed)}</b></div><div class="row"><span class="muted">Medio</span><b>${esc(l.media)}</b></div><div class="row"><span class="muted">VLAN</span><b>${esc(l.vlan||'—')}</b></div>
+      <div class="row"><span class="muted">Uso</span><b>${+l.util||0}% (${((SPEEDBPS[l.speed]||1e9)*(+l.util||0)/100/1e6).toLocaleString('es-CL',{maximumFractionDigits:0})} Mbps)</b></div><div class="row"><span class="muted">Sentido</span><b>${{a2b:'A → B',b2a:'B → A',both:'Ambos',none:'Sin tráfico'}[l.flow]||'A → B'}</b></div>
+      <div style="display:flex;gap:6px;margin-top:12px"><button class="btn sm" id="le">Editar</button><button class="btn sm" id="ld" style="color:var(--warn)">Eliminar</button></div>`;
+  } else html += `<h3>Detalle</h3><div class="muted" style="font-size:13px">Toca un equipo o un enlace para ver y editar sus interfaces.</div>`;
+  // simulador de ruta
+  const opts = sel => dg.nodes.map(n=>`<option value="${esc(n.id)}" ${sel===n.id?'selected':''}>${esc(n.label)}</option>`).join('');
+  html += `<div style="border-top:1px solid var(--line);margin-top:16px;padding-top:14px"><h3>Simular tráfico entre equipos</h3>
+    <div class="field"><label>Origen</label><select id="ro">${opts(route&&route[0]?route[0].from:'')}</select></div>
+    <div class="field"><label>Destino</label><select id="rd">${opts(route&&route.length?route[route.length-1].to:(dg.nodes[1]||{}).id)}</select></div>
+    <div style="display:flex;gap:6px"><button class="btn primary sm" id="rgo">Trazar ruta</button>${route?'<button class="btn sm" id="rclr">Limpiar</button>':''}</div>
+    ${route?`<div class="hops" style="margin-top:12px">${route.length?route.map((h,i)=>{ const out=h.link.a===h.from?h.link.ifA:h.link.ifB, inn=h.link.a===h.from?h.link.ifB:h.link.ifA; return `<div class="hop"><i>${i+1}</i><span>${esc(N[h.from]?.label)} <span class="mono muted">${esc(out||'')}</span> → <span class="mono muted">${esc(inn||'')}</span> ${esc(N[h.to]?.label)}</span></div>`; }).join(''):'<span class="muted">Mismo equipo</span>'}</div>`:''}</div>`;
+  el.innerHTML = html;
+  const b = id => document.getElementById(id);
+  if(b('ne')) b('ne').onclick = () => nodeModal(dSel.id);
+  if(b('nd')) b('nd').onclick = () => { const dg=getDiagram(diagProject); dg.nodes=dg.nodes.filter(n=>n.id!==dSel.id); dg.links=dg.links.filter(l=>l.a!==dSel.id&&l.b!==dSel.id); dSel=null; route=null; saveDiagram(dg); drawDiagram(); renderInspector(); };
+  if(b('le')) b('le').onclick = () => linkModal(dSel.id);
+  if(b('ld')) b('ld').onclick = () => { const dg=getDiagram(diagProject); dg.links=dg.links.filter(l=>l.id!==dSel.id); dSel=null; route=null; saveDiagram(dg); drawDiagram(); renderInspector(); };
+  if(b('rgo')) b('rgo').onclick = () => { const r = bfs(getDiagram(diagProject), b('ro').value, b('rd').value); if(!r){ toast('No hay camino entre esos equipos'); route=null; } else route=r; drawDiagram(); renderInspector(); };
+  if(b('rclr')) b('rclr').onclick = () => { route=null; drawDiagram(); renderInspector(); };
+}
+function nodeModal(id){
+  const dg = getDiagram(diagProject), n = dg.nodes.find(x=>x.id===id); if(!n) return;
+  modal(`<h3>Equipo</h3>
+    <div class="field"><label>Nombre (hostname)</label><input id="n_l" value="${esc(n.label)}"></div>
+    <div class="frow"><div class="field"><label>Tipo</label><select id="n_t">${Object.entries(SHAPES).map(([k,s])=>`<option value="${k}" ${n.type===k?'selected':''}>${s.n}</option>`).join('')}</select></div>
+    <div class="field"><label>Modelo</label><input id="n_m" value="${esc(n.model||'')}" placeholder="Ej: Catalyst 9300"></div></div>
+    <div class="field"><label>IP de gestión</label><input id="n_ip" class="mono" value="${esc(n.ip||'')}" placeholder="10.0.0.1"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" data-close>Cancelar</button><button class="btn primary" id="n_ok">Guardar</button></div>`);
+  $('#n_ok').onclick = () => { Object.assign(n,{label:$('#n_l').value.trim()||n.label,type:$('#n_t').value,model:$('#n_m').value.trim(),ip:$('#n_ip').value.trim()}); saveDiagram(dg); closeModal(); drawDiagram(); renderInspector(); };
+}
+function linkModal(id){
+  const dg = getDiagram(diagProject), l = dg.links.find(x=>x.id===id); if(!l) return;
+  const N = Object.fromEntries(dg.nodes.map(n=>[n.id,n]));
+  modal(`<h3>Enlace</h3>
+    <div class="frow"><div class="field"><label>Interfaz en ${esc(N[l.a]?.label)} (A)</label><input id="l_a" class="mono" value="${esc(l.ifA||'')}" placeholder="Gi1/0/1"></div>
+    <div class="field"><label>Interfaz en ${esc(N[l.b]?.label)} (B)</label><input id="l_b" class="mono" value="${esc(l.ifB||'')}" placeholder="Te1/1/1"></div></div>
+    <div class="frow"><div class="field"><label>Velocidad</label><select id="l_s">${Object.keys(SPEEDW).map(s=>`<option ${l.speed===s?'selected':''}>${s}</option>`).join('')}</select></div>
+    <div class="field"><label>Medio</label><select id="l_m">${Object.keys(MEDIA).map(s=>`<option ${l.media===s?'selected':''}>${s}</option>`).join('')}</select></div></div>
+    <div class="frow"><div class="field"><label>VLAN(s)</label><input id="l_v" value="${esc(l.vlan||'')}" placeholder="10,20 o trunk"></div>
+    <div class="field"><label>Sentido del tráfico</label><select id="l_f">${[['a2b','A → B'],['b2a','B → A'],['both','Ambos'],['none','Sin tráfico']].map(([k,v])=>`<option value="${k}" ${l.flow===k?'selected':''}>${v}</option>`).join('')}</select></div></div>
+    <div class="field"><label>Uso del enlace: <span id="l_uv">${+l.util||0}%</span></label><input type="range" id="l_u" min="0" max="100" value="${+l.util||0}" style="width:100%"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" data-close>Cancelar</button><button class="btn primary" id="l_ok">Guardar</button></div>`);
+  $('#l_u').oninput = e => { $('#l_uv').textContent = e.target.value+'%'; };
+  $('#l_ok').onclick = () => { Object.assign(l,{ifA:$('#l_a').value.trim(),ifB:$('#l_b').value.trim(),speed:$('#l_s').value,media:$('#l_m').value,vlan:$('#l_v').value.trim(),flow:$('#l_f').value,util:+$('#l_u').value}); saveDiagram(dg); closeModal(); drawDiagram(); renderInspector(); };
+}
+async function genDiagram(){
+  const q = $('#dprompt').value.trim(); if(!q) return;
+  const dg = getDiagram(diagProject);
+  if(!AI){ toast('Claude se activa al abrir el portal desde claude.ai'); return; }
+  const btn = $('#dgen'); btn.disabled = true; btn.textContent = 'Pensando…';
+  try{
+    const cur = {equipos: dg.nodes.map(n=>({nombre:n.label,tipo:n.type,ip:n.ip,modelo:n.model})), enlaces: dg.links.map(l=>({a:dg.nodes.find(n=>n.id===l.a)?.label, ifA:l.ifA, b:dg.nodes.find(n=>n.id===l.b)?.label, ifB:l.ifB, velocidad:l.speed, medio:l.media, vlan:l.vlan}))};
+    const r = await AI.json(`Eres ingeniero de redes. Diagrama actual: ${JSON.stringify(cur)}
+Pedido: "${q}"
+Devuelve SOLO JSON con los cambios a AGREGAR o ACTUALIZAR (no repitas lo que no cambia):
+{"equipos":[{"nombre":"hostname","tipo":"router|switch|firewall|server|ap|pc|cloud","ip":"","modelo":""}],
+ "enlaces":[{"a":"nombre equipo A","ifA":"interfaz en A","b":"nombre equipo B","ifB":"interfaz en B","velocidad":"100M|1G|10G|40G|100G","medio":"cobre|fibra|wan|wifi","vlan":"","uso":0-100,"sentido":"a2b|b2a|both"}]}
+Usa nombres de interfaz realistas (Gi1/0/1, Te1/1/1, port1, etc.) si el pedido no los da.`, {modelTier:'default'});
+    let added = 0;
+    (r.equipos||[]).forEach((e,i) => { let n = dg.nodes.find(x=>x.label.toLowerCase()===String(e.nombre).toLowerCase());
+      if(n){ Object.assign(n, {type:SHAPES[e.tipo]?e.tipo:n.type, ip:e.ip||n.ip, model:e.modelo||n.model}); }
+      else { dg.nodes.push({id:'n'+Date.now().toString(36)+i, type:SHAPES[e.tipo]?e.tipo:'switch', label:e.nombre, ip:e.ip||'', model:e.modelo||'', x:60+((dg.nodes.length*131)%(W-180)), y:60+((dg.nodes.length*97)%(H-200))}); added++; } });
+    const byName = s => dg.nodes.find(x=>x.label.toLowerCase()===String(s||'').toLowerCase());
+    (r.enlaces||[]).forEach((e,i) => { const A=byName(e.a), B=byName(e.b); if(!A||!B) return;
+      let l = dg.links.find(x=>(x.a===A.id&&x.b===B.id)||(x.a===B.id&&x.b===A.id));
+      const sw = l && l.a===B.id;
+      const data = {ifA: sw?e.ifB:e.ifA, ifB: sw?e.ifA:e.ifB, speed:SPEEDW[e.velocidad]?e.velocidad:'1G', media:MEDIA[e.medio]?e.medio:'cobre', vlan:e.vlan||'', util:+e.uso||30, flow:['a2b','b2a','both'].includes(e.sentido)?(sw&&e.sentido!=='both'?(e.sentido==='a2b'?'b2a':'a2b'):e.sentido):'a2b'};
+      if(l) Object.assign(l, data); else { dg.links.push({id:'l'+Date.now().toString(36)+i, a:A.id, b:B.id, ...data}); added++; } });
+    saveDiagram(dg); drawDiagram(); renderInspector(); toast(added ? `Claude agregó ${added} elemento(s)` : 'Diagrama actualizado');
+  }catch(e){ toast(e && e.code==='rate_limited' ? 'Claude está ocupado, intenta en un momento' : 'No se pudo generar el cambio'); }
+  btn.disabled = false; btn.textContent = 'Generar';
+}
+
+// ============ Reportes ============
+let repText = '';
+function reportes(m){
+  m.innerHTML = `<div class="top"><div><h1>Reportes de avance</h1><div class="sub">Se arma con los datos del portal · Claude lo redacta para tu jefatura</div></div>
+  <div class="toolbar" style="margin:0"><select id="rp"><option value="">Todos los proyectos</option>${projOptions()}</select>${AI?'<button class="btn sm" id="rai">✦ Redactar con Claude</button>':''}<button class="btn primary sm" id="rc">Copiar texto</button></div></div>
+  <div class="report" id="rep"></div>`;
+  const build = () => { const f=$('#rp').value; const ps=projects().filter(p=>p.status!=='Cerrado'&&(!f||p.id===f));
+    const avg = Math.round(ps.reduce((s,p)=>s+(+p.progress||0),0)/(ps.length||1));
+    $('#rep').innerHTML = `<h2>Reporte semanal de avance</h2><div class="muted">Semana del ${TODAY.toLocaleDateString('es-CL',{day:'numeric',month:'long',year:'numeric'})} · Responsable: Alexis</div>
+    <h4>Resumen</h4><p>${ps.length} proyecto${ps.length===1?'':'s'} activo${ps.length===1?'':'s'} con avance promedio de ${avg}%. ${ps.filter(p=>p.status==='En riesgo').length?'<b>'+ps.filter(p=>p.status==='En riesgo').map(p=>esc(p.name)).join(', ')+'</b> requiere atención.':'Sin proyectos en riesgo.'} Quedan ${overdue().filter(t=>!f||t.project===f).length} pendientes vencidos.</p>
+    ${ps.map(p=>{const ts=tasks().filter(t=>t.project===p.id); const od=ts.filter(t=>!t.done&&t.due&&daysTo(t.due)<0); const nx=ts.filter(t=>!t.done&&(!t.due||daysTo(t.due)>=0)).slice(0,3);
+      return `<h4>${esc(p.id)} · ${esc(p.name)}</h4><p>${statusPill(p.status)} &nbsp;Avance <b>${+p.progress||0}%</b> · cierre ${fmt(p.end)} (${daysTo(p.end)} días).<br>
+      ${od.length?'Vencidos: '+od.map(t=>esc(t.text)+' ('+esc(t.owner)+')').join('; ')+'.<br>':''}
+      ${nx.length?'Próximos pasos: '+nx.map(t=>esc(t.text)).join('; ')+'.':'Sin próximos pasos registrados.'}</p>`}).join('')}`;
+  };
+  build(); $('#rp').onchange = build;
+  $('#rc').onclick = async () => { try{ await navigator.clipboard.writeText($('#rep').innerText); toast('Reporte copiado'); }catch(e){ toast('No se pudo copiar'); } };
+  if($('#rai')) $('#rai').onclick = async () => { const btn=$('#rai'); btn.disabled=true; const f=$('#rp').value;
+    try{ await AI(`Redacta en español un reporte semanal de avance para la jefatura de Alexis (ingeniero de redes, Chile). Tono profesional y directo. Estructura: Resumen ejecutivo (3 líneas), luego por proyecto: estado, avance, logros, riesgos/bloqueos y próximos pasos, y al final "Apoyo requerido" si corresponde. ${f?'Solo el proyecto '+f+'.':''} Usa únicamente estos datos:\n${dataContext()}`,
+      {onText:({text})=>{ $('#rep').innerHTML = `<div style="white-space:pre-wrap">${lightMd(text)}</div>`; }, cache:false}); toast('Reporte redactado por Claude'); }
+    catch(e){ toast('No se pudo redactar con Claude'); build(); }
+    btn.disabled=false; };
+}
+
+// ============ Modal ============
+function modal(html){ $('#modal').innerHTML=html; $('#modalBg').classList.add('show'); document.querySelectorAll('#modal [data-close]').forEach(b=>b.onclick=closeModal); const f=$('#modal input:not([type=checkbox]):not([type=range])'); if(f && !mobile()) f.focus(); }
+function closeModal(){ $('#modalBg').classList.remove('show'); if(pending) setTimeout(scheduleRender, 0); }
+function confirmBox(msg, ok){ modal(`<h3>${esc(msg)}</h3><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" data-close>Cancelar</button><button class="btn primary" id="cb_ok" style="background:var(--warn);border-color:var(--warn)">Eliminar</button></div>`); $('#cb_ok').onclick=()=>{ closeModal(); ok(); }; }
+$('#modalBg').onclick = e => { if(e.target.id==='modalBg') closeModal(); };
+let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz=setTimeout(()=>{ if(!isEditing()) render(); }, 250); });
+
+// ============ Inicio ============
+const h0 = location.hash.slice(1); if(VIEWS.some(v=>v[0]===h0)) current=h0;
+render(); setSync('loading');
+initData();
+</script>
+</body>
+</html>
