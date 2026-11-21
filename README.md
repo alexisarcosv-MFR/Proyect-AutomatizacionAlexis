@@ -8,19 +8,27 @@ Portal personal para gestionar proyectos de redes/TI: proyectos con carpetas, re
 - **Celular:** app de Claude → Artifacts → *Portal de Proyectos*, o el mismo enlace.
 - Los datos se sincronizan en la nube entre todos tus dispositivos.
 
+## Publicación en Cloudflare
+
+Guía paso a paso: [docs/CLOUDFLARE.md](docs/CLOUDFLARE.md). El portal corre en Cloudflare Pages con base de datos D1 y acceso protegido con tu correo; cada `push` a este repositorio publica una nueva versión.
+
 ## Qué hay en este repositorio
 
 | Carpeta | Contenido |
 |---|---|
 | `portal/index.html` | Código completo del portal (una sola página: HTML + CSS + JavaScript) |
-| `docs/datos-ejemplo.json` | Datos de ejemplo (proyectos, pendientes, reuniones y un diagrama) |
+| `functions/api/[[route]].js` | API para Cloudflare Pages Functions + D1 |
+| `schema.sql` | Modelo de base de datos: clientes, proyectos, actividades (con horas) y vistas de reportes |
+| `docs/CLOUDFLARE.md` | Cómo publicarlo en Cloudflare |
+| `docs/datos-ejemplo.json` | Datos de ejemplo |
 
 ## Secciones del portal
 
 - **Inicio:** indicadores, avance por proyecto, próximas reuniones, pendientes urgentes y "Pregúntale a Claude".
 - **Proyectos:** ficha por proyecto con estado, avance, carpetas estándar (01_Gestion … 06_Entregables), pendientes y reuniones.
 - **Reuniones:** importa una reunión desde Fireflies (o pega/sube un .txt/.vtt) y Claude arma la minuta: resumen, acuerdos, riesgos y pendientes con responsable y plazo.
-- **Actividades:** registro de servicios del Área Soporte (apertura/cierre, horario, servicio, solicitante, responsable, tecnología, fabricante, estado, cliente, proyecto, observaciones), con filtros, reportes por servicio/tecnología/fabricante/responsable, análisis de Claude, exportación a Excel (mismo formato que la planilla original) y Word, e importación desde el Excel de la planilla anterior. Cada actividad aparece en la ficha de su proyecto.
+- **Proyectos y clientes:** cada proyecto agrupa sus actividades con horas totales, horas fuera de horario, contactos y horas por servicio; se pueden agrupar por cliente.
+- **Actividades:** registro de servicios del Área Soporte con **horas dedicadas** (apertura/cierre, horario, servicio, solicitante, responsable, tecnología, fabricante, estado, cliente, proyecto, observaciones), con filtros, reportes por servicio/tecnología/fabricante/responsable, análisis de Claude, exportación a Excel (mismo formato que la planilla original) y Word, e importación desde el Excel de la planilla anterior. Cada actividad aparece en la ficha de su proyecto.
 - **Pendientes:** lista filtrable por proyecto y estado; cada pendiente guarda su origen (reunión o manual).
 - **Agenda:** semana con reuniones del portal, vencimientos y eventos de Outlook; puede crear el evento también en Outlook.
 - **Diagramas:** equipos (hostname, modelo, IP), enlaces con interfaz A/B, velocidad, medio, VLAN, % de uso y sentido; tráfico animado, trazado de ruta entre equipos y tabla de interfaces copiable. Claude puede agregar equipos y enlaces desde una descripción.

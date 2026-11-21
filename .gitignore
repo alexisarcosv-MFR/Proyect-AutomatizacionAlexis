@@ -4,3 +4,7 @@ node_modules/
 .env
 .env.*
 *.log
+wrangler.toml
+.wrangler/
+Respaldo_Portal_*.json
+*.xlsx

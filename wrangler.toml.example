@@ -1,0 +1,10 @@
+# Copia este archivo como wrangler.toml solo para desarrollo local o despliegue por CLI.
+# Con la integración de GitHub en el panel de Cloudflare NO es necesario.
+name = "portal-proyectos"
+pages_build_output_dir = "portal"
+compatibility_date = "2026-11-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "portal-proyectos"
+database_id = "REEMPLAZA-CON-EL-ID-DE-TU-BASE-D1"

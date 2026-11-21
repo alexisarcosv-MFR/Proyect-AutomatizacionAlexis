@@ -46,9 +46,11 @@ h1{font-size:24px;margin:0;font-weight:600;letter-spacing:-.01em}
 .grid{display:grid;gap:16px}
 .kpis{grid-template-columns:repeat(4,1fr)}
 .kpis.k5{grid-template-columns:repeat(5,1fr)}
-.afilters{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}.afilters .field{margin:0}.afilters input,.afilters select{border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 10px;width:100%}
+.afilters{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px}.afilters .field{margin:0}.afilters input,.afilters select{border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 10px;width:100%}
 .areports{display:grid;grid-template-columns:1fr 1fr;gap:22px}
-.abar{display:grid;grid-template-columns:150px 1fr 30px;gap:9px;align-items:center;margin:8px 0;font-size:12.5px}.abar span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.grp td{background:#f6f8f5;padding:8px 10px}
+a.plink{color:var(--accent);cursor:pointer;text-decoration:none}a.plink:hover{text-decoration:underline}
+.abar{display:grid;grid-template-columns:150px 1fr auto;gap:9px;align-items:center;margin:8px 0;font-size:12.5px}.abar span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.abar b{white-space:nowrap;min-width:26px;text-align:right}
 .atable{min-width:1300px;font-size:12.5px}.atable td{white-space:nowrap}.atable td:nth-child(13){white-space:normal}
 .kpi .n{font-size:28px;font-weight:600;margin-top:4px}
 .kpi .l{color:var(--muted);font-size:13px}
@@ -191,8 +193,8 @@ const fmt = iso => iso ? parseISO(iso).getDate()+' '+mon(iso) : '—';
 const daysTo = iso => Math.round((parseISO(iso) - TODAY)/86400000);
 
 // ============ Estado ============
-const S = {projects:{},tasks:{},meetings:{},diagrams:{},config:{},ics:{},activities:{}};
-const KIND = {project:'projects',task:'tasks',meeting:'meetings',diagram:'diagrams',config:'config',ics:'ics',activity:'activities'};
+const S = {projects:{},tasks:{},meetings:{},diagrams:{},config:{},ics:{},activities:{},clients:{}};
+const KIND = {project:'projects',task:'tasks',meeting:'meetings',diagram:'diagrams',config:'config',ics:'ics',activity:'activities',client:'clients'};
 let DB = null, AI = null, MCP = null, DL = null, mode = 'loading', pending = false, dragging = false;
 const uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2,5);
 const projects = () => Object.values(S.projects).sort((a,b)=>a.id.localeCompare(b.id));
@@ -207,11 +209,13 @@ async function put(kind, obj){
   if(mode==='cloud'){
     try{ await DB.collection('items').doc(docId(kind,obj.id)).set({...obj, kind}); }
     catch(e){ handleDbErr(e); }
-  } else localSave();
+  } else if(mode==='server'){ await srvQueue({kind, id:obj.id, obj:{...obj, kind}}); srvCache(); }
+  else localSave();
 }
 async function del(kind, id){
   delete S[KIND[kind]][id];
   if(mode==='cloud'){ try{ await DB.collection('items').doc(docId(kind,id)).delete(); }catch(e){ handleDbErr(e); } }
+  else if(mode==='server'){ await srvQueue({kind, id, del:true}); srvCache(); }
   else localSave();
 }
 function handleDbErr(e){
@@ -221,11 +225,12 @@ function handleDbErr(e){
   else toast('No se pudo guardar. Revisa tu conexión');
 }
 function setSync(state, note){
-  const el = document.getElementById('sync'); el.className = 'sync '+(state==='cloud'?'on':state==='local'?'off':'');
-  el.querySelector('span').textContent = state==='cloud'?'Sincronizado en la nube':state==='local'?'Solo este dispositivo':'Conectando…';
+  const el = document.getElementById('sync'); el.className = 'sync '+(state==='cloud'||state==='server'?'on':state==='local'?'off':'');
+  el.querySelector('span').textContent = state==='cloud'?'Sincronizado en la nube':state==='server'?'Sincronizado · Cloudflare':state==='local'?(mode==='server'?'Sin conexión':'Solo este dispositivo'):'Conectando…';
   document.getElementById('syncNote').textContent = note||'';
 }
 async function initData(){
+  if(await tryServer()) return;
   const use = n => (window.claude && typeof window.claude.use==='function') ? window.claude.use(n).catch(()=>null) : Promise.resolve(null);
   use('sample').then(s => { AI = s; if(s) render(); });
   use('downloads').then(x => { DL = x; });
@@ -270,7 +275,7 @@ function lightMd(t){ return esc(t).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace
 function dataContext(){
   return JSON.stringify({
     hoy: isoOf(TODAY),
-    proyectos: projects().map(p=>({id:p.id,nombre:p.name,area:p.client,estado:p.status,avance:p.progress,cierre:p.end})),
+    proyectos: projects().map(p=>({id:p.id,nombre:p.name,cliente:clientName(p),tipo:p.tipo||'Proyecto',estado:p.status,avance:p.progress,inicio:p.start,cierre:p.end,horas:Math.round((projHours()[p.id]?.h||0)*10)/10})),
     pendientes: tasks().map(t=>({proyecto:t.project,tarea:t.text,responsable:t.owner,fecha:t.due,prioridad:t.prio,hecho:!!t.done,origen:t.origin})),
     reuniones: meetings().map(m=>({proyecto:m.project,titulo:m.title,fecha:m.date,hora:m.time,resumen:m.summary||''})),
     actividades: activities().sort((a,b)=>String(b.fechaApertura).localeCompare(String(a.fechaApertura))).slice(0,150).map(r=>({id:r.num,apertura:r.fechaApertura,cierre:r.fechaCierre,servicio:r.servicio,responsable:r.responsable,tecnologia:r.tecnologia,fabricante:r.fabricante,estado:r.estado,cliente:r.cliente,proyecto:r.proyecto,obs:String(r.observaciones||'').slice(0,160)}))
@@ -300,7 +305,7 @@ function renderNav(){
 function go(v){ current=v; if(v!=='proyectos') openProject=null; try{ location.hash = v; }catch(e){} render(); }
 window.addEventListener('hashchange', () => { const h=location.hash.slice(1); if(VIEWS.some(v=>v[0]===h) && h!==current){ current=h; render(); }});
 const mobile = () => window.innerWidth < 760;
-function syncLine(){ return `<div class="mob-sync sync ${mode==='cloud'?'on':mode==='local'?'off':''}"><i></i><span>${mode==='cloud'?'Sincronizado':mode==='local'?'Solo este dispositivo':'Conectando…'}</span></div>`; }
+function syncLine(){ const on = mode==='cloud'||mode==='server'; return `<div class="mob-sync sync ${on?'on':mode==='local'?'off':''}"><i></i><span>${on?'Sincronizado':mode==='local'?'Solo este dispositivo':'Conectando…'}</span></div>`; }
 function render(){
   renderNav(); const m=$('#main');
   if(mode==='loading'){ m.innerHTML = '<div class="empty">Cargando tus proyectos…</div>'; return; }
@@ -313,7 +318,9 @@ function dashboard(m){
   const act = projects().filter(p=>p.status!=='Cerrado');
   const open = tasks().filter(t=>!t.done);
   const upcoming = [...meetings(), ...icsEvents().map(e=>({...e, project:'Teams/Outlook'}))].filter(x=>daysTo(x.date)>=0 && !(x.date===isoOf(TODAY) && x.time && x.time < `${pad(new Date().getHours())}:${pad(new Date().getMinutes())}`)).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time)).slice(0,5);
-  const avg = Math.round(act.reduce((s,p)=>s+(+p.progress||0),0)/(act.length||1));
+  const monthStart = isoOf(new Date(TODAY.getFullYear(), TODAY.getMonth(), 1));
+  const actMonth = activities().filter(a=>a.fechaApertura>=monthStart);
+  const H = projHours();
   const h = new Date().getHours();
   m.innerHTML = `
   <div class="top"><div><h1>${h<12?'Buenos días':h<20?'Buenas tardes':'Buenas noches'}, Alexis</h1><div class="sub">${TODAY.toLocaleDateString('es-CL',{weekday:'long',day:'numeric',month:'long'})}</div></div>
@@ -321,14 +328,14 @@ function dashboard(m){
   ${!projects().length ? `<div class="card empty">Aún no hay proyectos. Crea el primero en <b>Proyectos</b>.</div>` : ''}
   <div class="grid kpis k5">
     <div class="card kpi"><div class="l">Proyectos activos</div><div class="n">${act.length}</div></div>
-    <div class="card kpi"><div class="l">Avance promedio</div><div class="n">${avg}%</div></div>
+    <div class="card kpi"><div class="l">Horas este mes</div><div class="n">${fmtH(sumH(actMonth))}</div><div class="muted" style="font-size:12px">${actMonth.length} actividades</div></div>
     <div class="card kpi"><div class="l">Pendientes abiertos</div><div class="n">${open.length}</div></div>
     <div class="card kpi"><div class="l">Vencidos</div><div class="n" style="color:var(--warn)">${overdue().length}</div></div>
     <div class="card kpi" style="cursor:pointer" id="kAct"><div class="l">Actividades en curso</div><div class="n" style="color:var(--amber)">${activities().filter(r=>r.estado==='En curso').length}</div></div>
   </div>
   <div class="grid two" style="margin-top:16px">
-    <div class="card"><h3>Avance por proyecto</h3>
-      ${act.map(p=>`<div class="prow"><div><b style="font-weight:500">${esc(p.name)}</b><div class="muted mono" style="font-size:12px">${esc(p.id)} · ${statusPill(p.status)}</div></div><div class="bar"><i style="width:${+p.progress||0}%"></i></div><div class="mono" style="text-align:right">${+p.progress||0}%</div></div>`).join('') || '<div class="muted">Sin proyectos activos</div>'}
+    <div class="card"><h3>Proyectos activos</h3>
+      ${act.sort((a,b)=>String(H[b.id]?.last||'').localeCompare(String(H[a.id]?.last||''))).map(p=>`<div class="prow click" data-proj="${esc(p.id)}" style="cursor:pointer;grid-template-columns:1fr 80px 70px"><div><b style="font-weight:500">${esc(p.name)}</b><div class="muted" style="font-size:12px"><span class="mono">${esc(p.id)}</span> · ${esc(clientName(p))}</div></div><div class="muted" style="font-size:12px;text-align:right">${H[p.id]?.last?fmt(H[p.id].last):'—'}</div><div class="mono" style="text-align:right"><b>${fmtH(H[p.id]?.h||0)}</b></div></div>`).join('') || '<div class="muted">Sin proyectos activos</div>'}
     </div>
     <div class="grid" style="align-content:start">
       <div class="card"><h3>Próximas reuniones</h3>
@@ -347,6 +354,7 @@ function dashboard(m){
   $('#qTask').onclick = () => taskModal();
   $('#qSet').onclick = settingsModal;
   $('#kAct').onclick = () => go('actividades');
+  document.querySelectorAll('[data-proj]').forEach(r => r.onclick = () => { go('proyectos'); openProject = r.dataset.proj; render(); });
   bindChecks();
   const ask = async () => {
     const q = $('#ask').value.trim(); if(!q) return; const out = $('#askOut');
@@ -371,48 +379,105 @@ function dashboard(m){
 const FOLDERS = ['01_Gestion','02_Reuniones','03_Diagramas','04_Ingenieria','05_Reportes','06_Entregables'];
 function proyectos(m){
   if(openProject && S.projects[openProject]) return projectDetail(m, S.projects[openProject]);
-  m.innerHTML = `<div class="top"><div><h1>Proyectos</h1><div class="sub">Cada proyecto trae su estructura de carpetas</div></div><button class="btn primary" id="newP">+ Nuevo proyecto</button></div>
-  <div class="card tbl" style="padding:6px 8px">${projects().length?`<table><thead><tr><th>ID</th><th>Proyecto</th><th>Área</th><th>Estado</th><th style="width:150px">Avance</th><th>Cierre</th><th>Abiertos</th></tr></thead><tbody>
-  ${projects().map(p=>{ const o=tasks().filter(t=>t.project===p.id&&!t.done).length; return `<tr class="click" data-id="${esc(p.id)}"><td class="mono">${esc(p.id)}</td><td><b style="font-weight:500">${esc(p.name)}</b></td><td class="muted">${esc(p.client)}</td><td>${statusPill(p.status)}</td><td><div class="bar"><i style="width:${+p.progress||0}%"></i></div><span class="muted mono" style="font-size:12px">${+p.progress||0}%</span></td><td>${fmt(p.end)}</td><td>${o}</td></tr>`}).join('')}
-  </tbody></table>`:'<div class="empty">Sin proyectos todavía</div>'}</div>`;
+  const H = projHours();
+  let list = projects().filter(p => (!pF.client || p.clientId===pF.client) && (!pF.tipo || (p.tipo||'Proyecto')===pF.tipo) && (!pF.estado || (pF.estado==='activos' ? p.status!=='Cerrado' : p.status===pF.estado)));
+  if(pF.sort==='horas') list.sort((a,b)=>(H[b.id]?.h||0)-(H[a.id]?.h||0));
+  else if(pF.sort==='reciente') list.sort((a,b)=>String(H[b.id]?.last||'').localeCompare(String(H[a.id]?.last||'')));
+  const totH = list.reduce((s,p)=>s+(H[p.id]?.h||0),0), totA = list.reduce((s,p)=>s+(H[p.id]?.n||0),0);
+  const row = p => { const h=H[p.id]||{}; const o=tasks().filter(t=>t.project===p.id&&!t.done).length;
+    return `<tr class="click" data-id="${esc(p.id)}"><td class="mono" style="white-space:nowrap">${esc(p.id)}</td><td><b style="font-weight:500">${esc(p.name)}</b>${(p.tipo||'Proyecto')==='Soporte'?' <span class="pill p-grey">Soporte</span>':''}</td><td class="muted">${esc(clientName(p))}</td><td>${statusPill(p.status)}</td><td class="mono">${h.n||0}</td><td style="white-space:nowrap">${h.h?`<b class="mono">${fmtH(h.h)}</b>`:''}${h.sinH?`<div class="muted" style="font-size:11.5px">${h.sinH} sin horas</div>`:''}${!h.n?'<span class="muted">—</span>':''}</td><td>${h.last?fmt(h.last):'—'}</td><td>${o||''}</td></tr>`; };
+  let body;
+  if(pF.group){
+    const groups = {}; list.forEach(p => (groups[p.clientId||'_'] = groups[p.clientId||'_'] || []).push(p));
+    body = Object.entries(groups).sort((a,b)=>clientNameById(a[0]).localeCompare(clientNameById(b[0]))).map(([cid, ps]) => { const gh = ps.reduce((s,p)=>s+(H[p.id]?.h||0),0);
+      return `<tr class="grp"><td colspan="8"><b>${esc(clientNameById(cid))}</b> <span class="muted">· ${ps.length} proyecto(s) · ${fmtH(gh)}</span></td></tr>${ps.map(row).join('')}`; }).join('');
+  } else body = list.map(row).join('');
+  m.innerHTML = `<div class="top"><div><h1>Proyectos</h1><div class="sub">Cada proyecto agrupa sus actividades y horas</div></div><div style="display:flex;gap:6px"><button class="btn" id="newC">+ Cliente</button><button class="btn primary" id="newP">+ Nuevo proyecto</button></div></div>
+  <div class="grid kpis" style="margin-bottom:14px"><div class="card kpi"><div class="l">Proyectos</div><div class="n">${list.length}</div></div><div class="card kpi"><div class="l">Activos</div><div class="n">${list.filter(p=>p.status!=='Cerrado').length}</div></div><div class="card kpi"><div class="l">Actividades</div><div class="n">${totA}</div></div><div class="card kpi"><div class="l">Horas registradas</div><div class="n">${fmtH(totH)}</div></div></div>
+  <div class="toolbar"><select id="pf_client"><option value="">Todos los clientes</option>${clients().map(c=>`<option value="${esc(c.id)}" ${pF.client===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
+    <select id="pf_tipo"><option value="">Proyectos y soporte</option>${['Proyecto','Soporte'].map(t=>`<option ${pF.tipo===t?'selected':''}>${t}</option>`).join('')}</select>
+    <select id="pf_estado">${[['','Todos los estados'],['activos','Activos'],['En curso','En curso'],['En riesgo','En riesgo'],['Planificación','Planificación'],['Cerrado','Cerrados']].map(([v,l])=>`<option value="${v}" ${pF.estado===v?'selected':''}>${l}</option>`).join('')}</select>
+    <select id="pf_sort">${[['id','Ordenar por ID'],['horas','Más horas'],['reciente','Actividad reciente']].map(([v,l])=>`<option value="${v}" ${pF.sort===v?'selected':''}>${l}</option>`).join('')}</select>
+    <label class="muted" style="font-size:13px;display:flex;gap:6px;align-items:center"><input type="checkbox" id="pf_group" ${pF.group?'checked':''}> Agrupar por cliente</label></div>
+  <div class="card tbl" style="padding:6px 8px">${list.length?`<table><thead><tr><th>ID</th><th>Proyecto</th><th>Cliente</th><th>Estado</th><th>Actividades</th><th>Horas</th><th>Última</th><th>Pend.</th></tr></thead><tbody>${body}</tbody></table>`:'<div class="empty">Sin proyectos con estos filtros</div>'}</div>`;
   document.querySelectorAll('tr.click').forEach(r => r.onclick = () => { openProject=r.dataset.id; render(); });
+  [['client','pf_client'],['tipo','pf_tipo'],['estado','pf_estado'],['sort','pf_sort']].forEach(([k,id]) => $('#'+id).onchange = e => { pF[k]=e.target.value; render(); });
+  $('#pf_group').onchange = e => { pF.group = e.target.checked; render(); };
   $('#newP').onclick = () => projectModal();
+  $('#newC').onclick = () => clientModal();
 }
 function projectDetail(m,p){
   const ts = tasks().filter(t=>t.project===p.id), ms = meetings().filter(x=>x.project===p.id);
+  const acts = activities().filter(r=>aMatchesProject(r,p)).sort((a,b)=>String(b.fechaApertura).localeCompare(String(a.fechaApertura))||(b.num-a.num));
+  const hT = sumH(acts), hF = sumH(acts.filter(a=>a.horario==='Fuera de horario')), sinH = acts.filter(a=>a.horas==null||a.horas==='').length;
   const hasDiag = !!S.diagrams[p.id];
-  m.innerHTML = `<div class="top"><div><a class="muted" style="cursor:pointer" id="back">← Proyectos</a><h1 style="margin-top:6px">${esc(p.name)}</h1><div class="sub mono">${esc(p.id)} · ${esc(p.client)} · ${fmt(p.start)} → ${fmt(p.end)}</div></div>
-  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${statusPill(p.status)}<button class="btn sm" id="editP">Editar</button></div></div>
-  <div class="card" style="margin-bottom:16px"><label class="muted" style="font-size:13px;display:flex;align-items:center;gap:10px">Avance <input type="range" min="0" max="100" value="${+p.progress||0}" id="prog" style="flex:1"> <span id="progV" class="mono">${+p.progress||0}%</span></label></div>
-  <div class="card"><h3>Carpetas del proyecto</h3><div class="folders">${FOLDERS.map(f=>{
-     const n = f==='02_Reuniones'?ms.length:f==='03_Diagramas'?(hasDiag?1:0):0;
-     return `<div class="folder" ${f==='03_Diagramas'?'data-diag="1" style="cursor:pointer"':''}><svg viewBox="0 0 24 24"><path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><div>${f}<small>${n} archivo${n===1?'':'s'}</small></div></div>`}).join('')}</div></div>
-  <div class="grid two" style="margin-top:16px">
+  const byServ = {}; acts.forEach(a=>{ const k=a.servicio||'Sin especificar'; byServ[k]=(byServ[k]||0)+(+a.horas||0); });
+  const contacts = [...new Set(acts.map(a=>a.contacto).filter(Boolean))];
+  m.innerHTML = `<div class="top"><div><a class="muted" style="cursor:pointer" id="back">← Proyectos</a><h1 style="margin-top:6px">${esc(p.name)}</h1><div class="sub"><span class="mono">${esc(p.id)}</span> · ${esc(clientName(p))} · ${esc(p.tipo||'Proyecto')} · ${fmt(p.start)} → ${p.end?fmt(p.end):'en curso'}</div></div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${statusPill(p.status)}<button class="btn sm" id="editP">Editar</button><button class="btn primary sm" id="addA">+ Registrar actividad</button></div></div>
+  <div class="grid kpis" style="margin-bottom:16px"><div class="card kpi"><div class="l">Actividades</div><div class="n">${acts.length}</div></div><div class="card kpi"><div class="l">Horas dedicadas</div><div class="n">${fmtH(hT)}</div>${sinH?`<div class="muted" style="font-size:12px">${sinH} actividad(es) sin horas</div>`:''}</div><div class="card kpi"><div class="l">Fuera de horario</div><div class="n">${fmtH(hF)}</div></div><div class="card kpi"><div class="l">En curso</div><div class="n" style="color:var(--amber)">${acts.filter(a=>a.estado==='En curso').length}</div></div></div>
+  <div class="card" style="margin-bottom:16px"><h3>Actividades del proyecto</h3>${acts.length?`<div class="tbl"><table><thead><tr><th>#</th><th>Fecha</th><th>Actividad / detalle</th><th>Servicio</th><th>Tecnología</th><th>Horario</th><th>Horas</th><th>Contacto</th><th>Estado</th></tr></thead><tbody>
+    ${acts.map(a=>`<tr class="click" data-aed="${esc(a.id)}"><td class="mono">${a.num}</td><td style="white-space:nowrap">${fmt(a.fechaApertura)}${a.fechaCierre&&a.fechaCierre!==a.fechaApertura?' → '+fmt(a.fechaCierre):''}</td><td>${esc(a.titulo||'')}${a.observaciones?`<div class="muted" style="font-size:12px">${esc(String(a.observaciones).slice(0,140))}</div>`:''}</td><td>${esc(a.servicio)}</td><td>${esc(a.tecnologia||'—')}</td><td>${a.horario==='Fuera de horario'?'<span class="pill p-amber">Fuera</span>':'Laboral'}</td><td class="mono">${a.horas!=null&&a.horas!==''?fmtH(+a.horas):'<span class="muted">—</span>'}</td><td>${esc(a.contacto||'')}</td><td>${aStatus(a.estado)}</td></tr>`).join('')}
+    </tbody></table></div>`:'<div class="muted">Sin actividades registradas para este proyecto.</div>'}</div>
+  <div class="grid two">
+    <div class="card"><h3>Horas por servicio</h3>${Object.values(byServ).some(v=>v>0)?hBars(Object.entries(byServ).filter(e=>e[1]>0).sort((a,b)=>b[1]-a[1])):`<div class="muted">Aún no hay horas registradas.${sinH?` <a class="plink" id="fillH">Completar horas (${sinH})</a>`:''}</div>`}${contacts.length?`<h3 style="margin-top:16px">Contactos</h3><div>${contacts.map(c=>`<span class="pill p-grey" style="margin:0 4px 4px 0">${esc(c)}</span>`).join('')}</div>`:''}</div>
+    <div class="card"><h3>Avance</h3><label class="muted" style="font-size:13px;display:flex;align-items:center;gap:10px"><input type="range" min="0" max="100" value="${+p.progress||0}" id="prog" style="flex:1"> <span id="progV" class="mono">${+p.progress||0}%</span></label>
+      <h3 style="margin-top:16px">Carpetas</h3><div class="folders">${FOLDERS.map(f=>{ const n = f==='02_Reuniones'?ms.length:f==='03_Diagramas'?(hasDiag?1:0):0;
+       return `<div class="folder" ${f==='03_Diagramas'?'data-diag="1" style="cursor:pointer"':''}><svg viewBox="0 0 24 24"><path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><div>${f}<small>${n} archivo${n===1?'':'s'}</small></div></div>`}).join('')}</div></div>
     <div class="card"><h3>Pendientes (${ts.filter(t=>!t.done).length} abiertos)</h3>${taskList(ts)}</div>
-    <div class="card"><h3>Actividades (${activities().filter(r=>aMatchesProject(r,p)).length})</h3>${activities().filter(r=>aMatchesProject(r,p)).sort((a,b)=>String(b.fechaApertura).localeCompare(String(a.fechaApertura))).slice(0,8).map(r=>`<div class="list-item">${r.fechaApertura?chip(r.fechaApertura):''}<div style="flex:1">${esc(r.servicio)} · ${esc(r.tecnologia||'—')}<div class="muted" style="font-size:12px">#${r.num} · ${esc(r.responsable)} · ${esc(String(r.observaciones||'').slice(0,80))}</div></div>${aStatus(r.estado)}</div>`).join('')||'<div class="muted">Sin actividades. En Actividades, escribe el nombre de este proyecto en el campo Proyecto.</div>'}</div>
     <div class="card"><h3>Reuniones</h3>${ms.sort((a,b)=>b.date.localeCompare(a.date)).map(x=>`<div class="list-item">${chip(x.date)}<div><div>${esc(x.title)}</div><div class="muted" style="font-size:12px">${esc(x.summary||'Sin minuta aún')}</div></div></div>`).join('')||'<div class="muted">Sin reuniones</div>'}</div>
   </div>`;
   $('#back').onclick = () => { openProject=null; render(); };
   const pr = $('#prog'); pr.oninput = e => { $('#progV').textContent=e.target.value+'%'; };
   pr.onchange = e => { put('project', {...p, progress:+e.target.value}); };
   $('#editP').onclick = () => projectModal(p);
+  $('#addA').onclick = () => activityModal(null, {projectId:p.id});
+  if($('#fillH')) $('#fillH').onclick = () => hoursModal(acts.filter(a=>a.horas==null||a.horas===''));
+  document.querySelectorAll('[data-aed]').forEach(r => r.onclick = () => activityModal(S.activities[r.dataset.aed]));
   const df = document.querySelector('[data-diag]'); if(df) df.onclick = () => { diagProject = p.id; go('diagramas'); };
   bindChecks();
 }
-function projectModal(p){
-  const isNew = !p; p = p || {status:'Planificación',progress:0,start:d(0),end:d(30),client:''};
+function nextProjectId(){ let n = projects().reduce((mx,p)=>Math.max(mx, parseInt(String(p.id).replace(/\D/g,''))||0), 0)+1; let id; do{ id='PRY-'+String(n++).padStart(3,'0'); }while(S.projects[id]); return id; }
+function clientOptions(sel){ return clients().map(c=>`<option value="${esc(c.id)}" ${sel===c.id?'selected':''}>${esc(c.name)}</option>`).join(''); }
+async function ensureClient(name){
+  name = String(name||'').trim(); if(!name) return '';
+  const hit = resolveClient(name); if(hit) return hit.id;
+  let n = clients().length+1, id; do{ id = 'CLI-'+String(n++).padStart(3,'0'); }while(S.clients[id]);
+  await put('client', {id, name, aliases:[name]}); return id;
+}
+function projectModal(p, opts={}){
+  const isNew = !p; p = p || {status:'En curso',progress:0,start:d(0),end:'',tipo:'Proyecto',aliases:[],clientId:opts.clientId||''};
   modal(`<h3>${isNew?'Nuevo proyecto':'Editar proyecto'}</h3>
-  <div class="field"><label>Nombre</label><input id="f_name" value="${esc(p.name||'')}" placeholder="Ej: Cableado estructurado sala servidores"></div>
-  <div class="field"><label>Área / cliente</label><input id="f_client" value="${esc(p.client)}"></div>
+  <div class="field"><label>Nombre *</label><input id="f_name" value="${esc(p.name||opts.name||'')}" placeholder="Ej: Migración Casa Matriz SUPEREDUC"></div>
+  <div class="frow"><div class="field"><label>Cliente</label><select id="f_client"><option value="">— Sin cliente —</option>${clientOptions(p.clientId)}<option value="__new">＋ Nuevo cliente…</option></select></div><div class="field"><label>Tipo</label><select id="f_tipo">${['Proyecto','Soporte'].map(t=>`<option ${(p.tipo||'Proyecto')===t?'selected':''}>${t}</option>`).join('')}</select></div></div>
+  <div class="field" id="f_newc_w" style="display:none"><label>Nombre del nuevo cliente</label><input id="f_newc"></div>
   <div class="frow"><div class="field"><label>Inicio</label><input type="date" id="f_start" value="${esc(p.start)}"></div><div class="field"><label>Cierre</label><input type="date" id="f_end" value="${esc(p.end)}"></div></div>
   <div class="field"><label>Estado</label><select id="f_status">${['Planificación','En curso','En riesgo','Cerrado'].map(s=>`<option ${p.status===s?'selected':''}>${s}</option>`).join('')}</select></div>
-  <div style="display:flex;gap:8px;justify-content:space-between">${isNew?'<span></span>':'<button class="btn" id="f_del" style="color:var(--warn)">Eliminar</button>'}<div style="display:flex;gap:8px"><button class="btn" data-close>Cancelar</button><button class="btn primary" id="f_ok">${isNew?'Crear con carpetas':'Guardar'}</button></div></div>`);
-  $('#f_ok').onclick = () => { const name=$('#f_name').value.trim(); if(!name) return;
-    let id = p.id;
-    if(isNew){ let n = projects().length+1; do{ id='PRY-'+String(n++).padStart(3,'0'); }while(S.projects[id]); }
-    put('project', {...p, id, name, client:$('#f_client').value||'—', start:$('#f_start').value, end:$('#f_end').value, status:$('#f_status').value, owner:'Alexis'});
-    closeModal(); toast(isNew? id+' creado con 6 carpetas':'Proyecto actualizado'); render(); };
-  if(!isNew) $('#f_del').onclick = () => { confirmBox(`¿Eliminar ${p.id} y sus pendientes?`, () => { tasks().filter(t=>t.project===p.id).forEach(t=>del('task',t.id)); del('project',p.id); openProject=null; render(); toast('Proyecto eliminado'); }); };
+  <div class="field"><label>Otros nombres en Excel (separados por ;)</label><input id="f_alias" value="${esc((p.aliases||[]).join('; '))}" placeholder="Ej: CASA MATRIZ ING DE DETALLE; CORE CASA MATRIZ"><div class="muted" style="font-size:12px;margin-top:4px">Al importar actividades, estos textos se asignan a este proyecto.</div></div>
+  <div style="display:flex;gap:8px;justify-content:space-between">${isNew?'<span></span>':'<button class="btn" id="f_del" style="color:var(--warn)">Eliminar</button>'}<div style="display:flex;gap:8px"><button class="btn" data-close>Cancelar</button><button class="btn primary" id="f_ok">${isNew?'Crear proyecto':'Guardar'}</button></div></div>`);
+  $('#f_client').onchange = e => { $('#f_newc_w').style.display = e.target.value==='__new' ? '' : 'none'; };
+  $('#f_ok').onclick = async () => { const name=$('#f_name').value.trim(); if(!name) return;
+    $('#f_ok').disabled = true;
+    let cid = $('#f_client').value; if(cid==='__new') cid = await ensureClient($('#f_newc').value);
+    const id = p.id || nextProjectId();
+    const aliases = $('#f_alias').value.split(';').map(s=>s.trim()).filter(Boolean);
+    const np = {...p, id, name, clientId:cid, client:clientNameById(cid), tipo:$('#f_tipo').value, start:$('#f_start').value, end:$('#f_end').value, status:$('#f_status').value, aliases, owner:p.owner||'Alexis Arcos'};
+    await put('project', np);
+    if(!isNew && np.name!==p.name) for(const a of activities().filter(a=>a.projectId===id)) await put('activity', {...a, proyecto:np.name, cliente:np.client||a.cliente, clientId:np.clientId||a.clientId});
+    closeModal(); toast(isNew? id+' creado':'Proyecto actualizado'); if(opts.onSave) opts.onSave(np); else render(); };
+  if(!isNew) $('#f_del').onclick = () => { const na = activities().filter(a=>a.projectId===p.id).length;
+    confirmBox(`¿Eliminar ${p.id}? ${na?`Sus ${na} actividades quedan sin proyecto (no se borran).`:''}`, async () => { for(const t of tasks().filter(t=>t.project===p.id)) await del('task',t.id); for(const a of activities().filter(a=>a.projectId===p.id)) await put('activity',{...a, projectId:''}); await del('project',p.id); openProject=null; render(); toast('Proyecto eliminado'); }); };
+}
+function clientModal(c){
+  const isNew = !c; c = c || {name:'', aliases:[]};
+  modal(`<h3>${isNew?'Nuevo cliente':'Editar cliente'}</h3>
+    <div class="field"><label>Nombre *</label><input id="c_name" value="${esc(c.name)}"></div>
+    <div class="field"><label>Otros nombres (separados por ;)</label><input id="c_alias" value="${esc((c.aliases||[]).join('; '))}" placeholder="Ej: SUPEREDUC; SUPER DE EDUCACION"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" data-close>Cancelar</button><button class="btn primary" id="c_ok">Guardar</button></div>`);
+  $('#c_ok').onclick = async () => { const name=$('#c_name').value.trim(); if(!name) return;
+    let id = c.id; if(!id){ let n=clients().length+1; do{ id='CLI-'+String(n++).padStart(3,'0'); }while(S.clients[id]); }
+    await put('client', {...c, id, name, aliases:$('#c_alias').value.split(';').map(s=>s.trim()).filter(Boolean)});
+    closeModal(); toast('Cliente guardado'); render(); };
 }
 
 // ============ Pendientes ============
@@ -943,9 +1008,9 @@ function offerFile(filename, u8, opts={}){
   modal(`<h3>${esc(opts.title||'Archivo listo')}</h3><p class="muted" style="margin-top:0">${esc(filename)} · ${(u8.length/1024).toFixed(0)} KB</p>
     ${opts.note?`<p style="font-size:13px">${opts.note}</p>`:''}
     <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><button class="btn" data-close>Cerrar</button>
-    ${opts.noDownload?'':'<button class="btn" id="of_dl">⬇ Descargar</button>'}<button class="btn primary" id="of_od">☁ Guardar en OneDrive</button></div>`);
+    ${opts.noDownload?'':`<button class="btn ${MCP&&oneDriveCfg()?'':'primary'}" id="of_dl">⬇ Descargar</button>`}${MCP&&oneDriveCfg()?'<button class="btn primary" id="of_od">☁ Guardar en OneDrive</button>':''}</div>`);
   const dl=$('#of_dl'); if(dl) dl.onclick = async () => { if(await saveDownload(filename, u8)) closeModal(); };
-  $('#of_od').onclick = async () => { $('#of_od').disabled=true; $('#of_od').textContent='Subiendo…'; const ok = await saveOneDrive(filename, u8, opts.text); if(ok && !$('#modal a')) closeModal(); else if(!ok){ $('#of_od').disabled=false; $('#of_od').textContent='☁ Guardar en OneDrive'; } };
+  if($('#of_od')) $('#of_od').onclick = async () => { $('#of_od').disabled=true; $('#of_od').textContent='Subiendo…'; const ok = await saveOneDrive(filename, u8, opts.text); if(ok && !$('#modal a')) closeModal(); else if(!ok){ $('#of_od').disabled=false; $('#of_od').textContent='☁ Guardar en OneDrive'; } };
 }
 
 // ============ Word (.docx) ============
@@ -1007,7 +1072,7 @@ async function buildXlsx(which){
   await lib('xlsx');
   const wb = XLSX.utils.book_new();
   const add = (name, rows) => { const ws = XLSX.utils.json_to_sheet(rows.length?rows:[{'(vacío)':''}]); ws['!cols'] = Object.keys(rows[0]||{a:1}).map(k=>({wch:Math.min(48,Math.max(10,k.length+2,...rows.map(r=>String(r[k]??'').length+1)))})); XLSX.utils.book_append_sheet(wb, ws, name); };
-  if(!which || which==='proyectos') add('Proyectos', projects().map(p=>({ID:p.id,Proyecto:p.name,Area:p.client,Estado:p.status,'Avance %':+p.progress||0,Inicio:p.start,Cierre:p.end})));
+  if(!which || which==='proyectos') add('Proyectos', projects().map(p=>({ID:p.id,Proyecto:p.name,Cliente:clientName(p),Tipo:p.tipo||'Proyecto',Estado:p.status,'Avance %':+p.progress||0,Inicio:p.start,Cierre:p.end,Horas:Math.round((projHours()[p.id]?.h||0)*10)/10})));
   if(!which || which==='pendientes') add('Pendientes', tasks().sort((a,b)=>String(a.due).localeCompare(String(b.due))).map(t=>({Proyecto:t.project,Tarea:t.text,Responsable:t.owner,Fecha:t.due,Prioridad:t.prio,Estado:t.done?'Hecho':(t.due&&daysTo(t.due)<0?'Vencido':'Abierto'),Origen:t.origin})));
   if(!which) add('Reuniones', meetings().sort((a,b)=>b.date.localeCompare(a.date)).map(m=>({Proyecto:m.project,Reunion:m.title,Fecha:m.date,Hora:m.time,Resumen:m.summary||''})));
   if(!which || which==='interfaces') add('Interfaces', interfaceRows(which==='interfaces'?diagProject:null));
@@ -1216,62 +1281,78 @@ function applyZoom(){ const c=$('#canvas'); if(!c) return; const w=W/zoom, h=H/z
 
 // ============ Ajustes y accesos ============
 const PORTAL_URL = 'https://claude.ai/artifact/WPQaY9QWcZR7p1y9Mknktx';
-const SAMPLE_IDS = {project:['PRY-001','PRY-002','PRY-003','PRY-004'], task:['t1','t2','t3','t4','t5','t6','t7'], meeting:['m1','m2','m3','m4'], diagram:['PRY-001']};
 function settingsModal(){
   const ics = S.ics.main, od = oneDriveCfg();
-  const hasSample = SAMPLE_IDS.task.some(id=>S.tasks[id]) || SAMPLE_IDS.meeting.some(id=>S.meetings[id]);
+  const url = mode==='server' ? location.origin : PORTAL_URL;
   modal(`<h3>Ajustes</h3>
     <div style="font-weight:600;margin:4px 0 6px">Acceso</div>
-    <div class="note" style="margin:0 0 6px">PC: <span class="mono" style="font-size:11.5px;word-break:break-all">${PORTAL_URL}</span><br>Celular: app Claude → menú → Artifacts → <b>Portal de Proyectos</b> (fijado), o abre el mismo enlace.</div>
+    <div class="note" style="margin:0 0 6px">${mode==='server'?`Tu portal en Cloudflare: <span class="mono" style="font-size:11.5px;word-break:break-all">${esc(url)}</span><br>Ábrelo en cualquier navegador (PC o celular) e ingresa con tu correo autorizado.${SRV.user?`<br>Sesión: <b>${esc(SRV.user)}</b>`:''}`:`PC: <span class="mono" style="font-size:11.5px;word-break:break-all">${PORTAL_URL}</span><br>Celular: app Claude → Artifacts → <b>Portal de Proyectos</b> (fijado), o el mismo enlace.`}</div>
     <button class="btn sm" id="st_copy">Copiar enlace</button>
+    <div style="font-weight:600;margin:16px 0 6px">Respaldo de datos</div>
+    <div class="muted" style="font-size:13px">Descarga todo (proyectos, actividades, clientes, diagramas…) en un archivo, o restaura uno.</div>
+    <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><button class="btn sm" id="st_bk">⬇ Descargar respaldo</button><button class="btn sm" id="st_rs">⇪ Restaurar respaldo</button></div>
+    <div style="font-weight:600;margin:16px 0 6px">Actividades</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" id="st_lists">Editar listas (servicios, responsables…)</button><button class="btn sm" id="st_cli">Clientes (${clients().length})</button></div>
     <div style="font-weight:600;margin:16px 0 6px">Agenda Teams / Outlook</div>
     <div class="muted" style="font-size:13px">${ics?`Calendario importado: ${ics.events.length} reuniones (${esc(ics.file||'.ics')}, ${new Date(ics.importedAt).toLocaleString('es-CL',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}).`:'Aún no importas tu calendario de trabajo.'}</div>
     <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><button class="btn sm" id="st_ics">Importar calendario (.ics)</button><button class="btn sm" id="st_icshelp">¿Cómo exportarlo?</button></div>
     <div style="font-weight:600;margin:16px 0 6px">Excel</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" id="st_xin">Importar proyectos/pendientes</button><button class="btn sm" id="st_xout">Exportar todo</button></div>
-    <div style="font-weight:600;margin:16px 0 6px">OneDrive</div>
-    <div class="muted" style="font-size:13px">${od?`Los archivos se guardan en <a href="${esc(od.webUrl)}" target="_blank" rel="noopener">OneDrive › Portal de Proyectos</a>.`:'Carpeta no configurada.'}</div>
-    ${hasSample?`<div style="font-weight:600;margin:16px 0 6px">Datos de ejemplo</div><button class="btn sm" id="st_clean" style="color:var(--warn)">Borrar datos de ejemplo</button>`:''}
+    ${MCP?`<div style="font-weight:600;margin:16px 0 6px">OneDrive</div><div class="muted" style="font-size:13px">${od?`Los archivos se guardan en <a href="${esc(od.webUrl)}" target="_blank" rel="noopener">OneDrive › Portal de Proyectos</a>.`:'Carpeta no configurada.'}</div>`:''}
     <div style="text-align:right;margin-top:16px"><button class="btn primary" data-close>Listo</button></div>`);
-  $('#st_copy').onclick = async () => { try{ await navigator.clipboard.writeText(PORTAL_URL); toast('Enlace copiado'); }catch(e){ toast('No se pudo copiar'); } };
+  $('#st_copy').onclick = async () => { try{ await navigator.clipboard.writeText(url); toast('Enlace copiado'); }catch(e){ toast('No se pudo copiar'); } };
+  $('#st_bk').onclick = () => { closeModal(); exportBackup(); };
+  $('#st_rs').onclick = () => { closeModal(); importBackup(); };
+  $('#st_lists').onclick = listsModal;
+  $('#st_cli').onclick = () => modal(`<h3>Clientes</h3>${clients().map(c=>`<div class="list-item"><div style="flex:1"><b style="font-weight:500">${esc(c.name)}</b><div class="muted" style="font-size:12px">${projects().filter(p=>p.clientId===c.id).length} proyecto(s) · ${esc((c.aliases||[]).join(', '))}</div></div><button class="btn sm" data-cli="${esc(c.id)}">Editar</button></div>`).join('')||'<div class="muted">Sin clientes</div>'}<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px"><button class="btn" id="cl_new">+ Cliente</button><button class="btn primary" data-close>Listo</button></div>`) || (document.querySelectorAll('[data-cli]').forEach(b=>b.onclick=()=>clientModal(S.clients[b.dataset.cli])), $('#cl_new').onclick=()=>clientModal());
   $('#st_ics').onclick = () => { closeModal(); importICS(); };
   $('#st_icshelp').onclick = () => modal(`<h3>Exportar tu calendario de Outlook</h3>
     <ol style="padding-left:18px;line-height:1.6"><li>Abre <b>Outlook</b> (escritorio) y ve al <b>Calendario</b>.</li><li><b>Archivo → Guardar calendario</b>.</li><li>En <b>Más opciones</b> elige el rango (ej. próximos 30 días) y <b>Detalle completo</b> (así se incluye el enlace de Teams).</li><li>Guarda el archivo <b>.ics</b> y súbelo aquí en Ajustes → Importar calendario.</li></ol>
     <p class="muted" style="font-size:13px">Tu agenda de Teams es la misma de Outlook, así que con esto quedan ambas. Repite cuando quieras actualizar.</p><div style="text-align:right"><button class="btn primary" data-close>Entendido</button></div>`);
   $('#st_xin').onclick = () => { closeModal(); importXlsx(); };
   $('#st_xout').onclick = () => { closeModal(); exportXlsx(null, 'Portal-Proyectos'); };
-  const cl = $('#st_clean'); if(cl) cl.onclick = () => confirmBox('¿Borrar los proyectos, pendientes, reuniones y diagrama de ejemplo?', async () => {
-    for(const [k, ids] of Object.entries(SAMPLE_IDS)) for(const id of ids){ if(S[KIND[k]][id]) await del(k, id); }
-    for(const t of tasks()) if(SAMPLE_IDS.project.includes(t.project) && !S.projects[t.project]) await del('task', t.id);
-    toast('Datos de ejemplo borrados'); render(); });
 }
 
+// ============ Clientes, horas y utilidades ============
+const clients = () => Object.values(S.clients).sort((a,b)=>a.name.localeCompare(b.name));
+const clientNameById = id => (S.clients[id]||{}).name || (id && id!=='_' ? id : 'Sin cliente');
+const clientName = p => p.clientId ? clientNameById(p.clientId) : (p.client || 'Sin cliente');
+const normTxt = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,' ').trim();
+function resolveClient(txt){ const t = normTxt(txt); if(!t) return null; return clients().find(c => normTxt(c.name)===t || (c.aliases||[]).some(a=>normTxt(a)===t)) || null; }
+function resolveProject(txt){ const t = normTxt(txt); if(!t) return null; return projects().find(p => normTxt(p.name)===t || normTxt(p.id)===t || (p.aliases||[]).some(a=>normTxt(a)===t)) || null; }
+const sumH = arr => arr.reduce((s,a)=>s+(+a.horas||0),0);
+const fmtH = h => { h = +h||0; return (Math.round(h*10)/10).toLocaleString('es-CL') + ' h'; };
+function projHours(){ const H = {}; activities().forEach(a => { const k = a.projectId||'_'; const o = H[k] = H[k] || {h:0,n:0,last:'',sinH:0}; o.n++; o.h += +a.horas||0; if(a.horas==null||a.horas==='') o.sinH++; const l = a.fechaCierre||a.fechaApertura||''; if(l>o.last) o.last=l; }); return H; }
+function hBars(entries){ const mx = Math.max(...entries.map(e=>e[1]), 0.0001); return entries.map(([n,v])=>`<div class="abar"><span title="${esc(n)}">${esc(n)}</span><div class="bar"><i style="width:${100*v/mx}%"></i></div><b class="mono" style="width:auto">${fmtH(v)}</b></div>`).join(''); }
+const pF = {client:'', tipo:'', estado:'', sort:'reciente', group:true};
+
 // ============ Actividades (Seguimiento Área Soporte) ============
-const ALISTS = {
+const ALIST_DEFAULT = {
   servicio:["Soporte a la Implementacion","Implementacion","Provisionamiento","Consultoria","Diseño","Arquitectura","Capacitacion","Certificaciones Partner","Upskilling tecnológico","Productos","Otro"],
   solicitante:["Implementacion Tecnica","Diseño/Arquitectura","Preventa","Project Manager","Productos","Comercial","Otro"],
   responsable:["Alexis Arcos","Oscar Pardo","Carlos Cortes","Camilo Aguilar","Cristian Soto"],
   tecnologia:["Colaboracion","Wifi","SdWan","Seguridad Perimetral","SASE","Secure Lan","Networking","Otro"],
-  fabricante:["Fortinet","Cisco","Huawei","Aruba","Meraki","Otro"],
-  horario:["Horario laboral","Fuera de horario"],
-  estado:["En curso","Terminado"]
+  fabricante:["Fortinet","Cisco","Huawei","Aruba","Meraki","Otro"]
 };
-const AKEYS = ["num","fechaApertura","fechaCierre","horario","servicio","solicitante","responsable","tecnologia","fabricante","estado","cliente","proyecto","observaciones"];
-const AHEAD = ["ID","Fecha apertura","Fecha cierre","Tipo de horario","Servicio","Solicitante","Responsable","Tecnología","Fabricante","Estado","Cliente","Proyecto","Observaciones"];
+const ALISTS = new Proxy({}, {get:(_, k) => k==='horario' ? ["Horario laboral","Fuera de horario"] : k==='estado' ? ["En curso","Terminado"] : ((S.config.listas && Array.isArray(S.config.listas[k]) && S.config.listas[k].length) ? S.config.listas[k] : ALIST_DEFAULT[k] || [])});
+const AKEYS = ["num","fechaApertura","fechaCierre","horario","servicio","solicitante","responsable","tecnologia","fabricante","estado","cliente","proyecto","titulo","horas","contacto","observaciones"];
+const AHEAD = ["ID","Fecha apertura","Fecha cierre","Tipo de horario","Servicio","Solicitante","Responsable","Tecnología","Fabricante","Estado","Cliente","Proyecto","Actividad / detalle","Horas","Contacto","Observaciones"];
 const activities = () => Object.values(S.activities);
 let aTab = 'registro';
-const aF = {desde:'', hasta:'', responsable:'', estado:'', tecnologia:'', q:''};
+const aF = {desde:'', hasta:'', responsable:'', estado:'', tecnologia:'', project:'', q:''};
 function aFiltered(){
-  const q = aF.q.toLowerCase();
-  return activities().filter(r => (!aF.desde||r.fechaApertura>=aF.desde) && (!aF.hasta||r.fechaApertura<=aF.hasta) && (!aF.responsable||r.responsable===aF.responsable) && (!aF.estado||r.estado===aF.estado) && (!aF.tecnologia||r.tecnologia===aF.tecnologia) &&
-    (!q || [r.cliente,r.proyecto,r.observaciones,r.servicio,r.solicitante].join(' ').toLowerCase().includes(q)))
+  const q = normTxt(aF.q);
+  return activities().filter(r => (!aF.desde||r.fechaApertura>=aF.desde) && (!aF.hasta||r.fechaApertura<=aF.hasta) && (!aF.responsable||r.responsable===aF.responsable) && (!aF.estado||r.estado===aF.estado) && (!aF.tecnologia||r.tecnologia===aF.tecnologia) && (!aF.project || (aF.project==='_' ? !r.projectId : r.projectId===aF.project)) &&
+    (!q || normTxt([r.cliente,r.proyecto,r.titulo,r.contacto,r.observaciones,r.servicio,r.solicitante].join(' ')).includes(q)))
     .sort((a,b)=>String(b.fechaApertura).localeCompare(String(a.fechaApertura)) || (b.num-a.num));
 }
 function aCounts(arr, key){ const m={}; arr.forEach(r=>{ const v=r[key]||'Sin especificar'; m[v]=(m[v]||0)+1; }); return Object.entries(m).sort((a,b)=>b[1]-a[1]); }
+function aHours(arr, keyFn){ const m={}; arr.forEach(r=>{ const v=keyFn(r)||'Sin especificar'; m[v]=(m[v]||0)+(+r.horas||0); }); return Object.entries(m).filter(e=>e[1]>0).sort((a,b)=>b[1]-a[1]); }
 const aNext = () => activities().reduce((mx,r)=>Math.max(mx, +r.num||0), 0) + 1;
 const aStatus = s => `<span class="pill ${s==='Terminado'?'p-ok':'p-amber'}">${esc(s)}</span>`;
-function aMatchesProject(r, p){ const t = String(r.proyecto||'').toLowerCase(); return !!t && (t===p.name.toLowerCase() || t.includes(p.id.toLowerCase()) || t===p.id.toLowerCase()); }
+function aMatchesProject(r, p){ if(r.projectId) return r.projectId===p.id; const t = normTxt(r.proyecto); return !!t && (t===normTxt(p.name) || (p.aliases||[]).some(a=>normTxt(a)===t)); }
 function aOpts(list, sel, first){ return (first!==undefined?`<option value="">${first}</option>`:'') + list.map(v=>`<option ${sel===v?'selected':''}>${esc(v)}</option>`).join(''); }
+const projLabel = id => { const p = S.projects[id]; return p ? p.name : ''; };
 
 function actividades(m){
   const arr = aFiltered(), all = activities();
@@ -1279,66 +1360,87 @@ function actividades(m){
   const filters = `<div class="card" style="margin-bottom:14px"><div class="afilters">
     <div class="field"><label>Desde</label><input type="date" id="af_desde" value="${esc(aF.desde)}"></div>
     <div class="field"><label>Hasta</label><input type="date" id="af_hasta" value="${esc(aF.hasta)}"></div>
+    <div class="field"><label>Proyecto</label><select id="af_project"><option value="">Todos</option>${projects().map(p=>`<option value="${esc(p.id)}" ${aF.project===p.id?'selected':''}>${esc(p.id)} · ${esc(p.name)}</option>`).join('')}<option value="_" ${aF.project==='_'?'selected':''}>Sin proyecto</option></select></div>
     <div class="field"><label>Responsable</label><select id="af_responsable">${aOpts(ALISTS.responsable, aF.responsable, 'Todos')}</select></div>
     <div class="field"><label>Estado</label><select id="af_estado">${aOpts(ALISTS.estado, aF.estado, 'Todos')}</select></div>
     <div class="field"><label>Tecnología</label><select id="af_tecnologia">${aOpts(ALISTS.tecnologia, aF.tecnologia, 'Todas')}</select></div>
-    <div class="field"><label>Buscar</label><input id="af_q" value="${esc(aF.q)}" placeholder="Cliente, proyecto…"></div>
+    <div class="field"><label>Buscar</label><input id="af_q" value="${esc(aF.q)}" placeholder="Cliente, detalle, contacto…"></div>
   </div></div>`;
   let body = '';
   if(aTab==='registro'){
-    body = mobile() ? `<div class="card">${arr.map(r=>`<div class="list-item" data-aed="${esc(r.id)}" style="cursor:pointer"><div class="date-chip">${r.fechaApertura?parseISO(r.fechaApertura).getDate():'—'}<small>${r.fechaApertura?mon(r.fechaApertura):''}</small></div><div style="flex:1"><div><b style="font-weight:500">${esc(r.servicio)}</b> · ${esc(r.cliente||'—')}</div><div class="muted" style="font-size:12px">#${r.num} · ${esc(r.responsable)} · ${esc(r.tecnologia||'—')} · ${esc(r.proyecto||'')}</div></div>${aStatus(r.estado)}</div>`).join('')||'<div class="empty">No hay actividades para mostrar.</div>'}</div>`
+    const cell = (r,k) => k==='num'?`<td class="mono">${r.num}</td>`:k==='estado'?`<td>${aStatus(r.estado)}</td>`:k==='horas'?`<td class="mono">${r.horas!=null&&r.horas!==''?fmtH(+r.horas):'<span class="muted">—</span>'}</td>`:k==='proyecto'?`<td>${r.projectId?`<a class="plink" data-open="${esc(r.projectId)}">${esc(projLabel(r.projectId)||r.proyecto)}</a>`:esc(r.proyecto)}</td>`:(k==='observaciones'||k==='titulo')?`<td style="min-width:200px;white-space:normal">${esc(r[k])}</td>`:`<td>${esc(r[k])}</td>`;
+    body = mobile() ? `<div class="card">${arr.map(r=>`<div class="list-item" data-aed="${esc(r.id)}" style="cursor:pointer"><div class="date-chip">${r.fechaApertura?parseISO(r.fechaApertura).getDate():'—'}<small>${r.fechaApertura?mon(r.fechaApertura):''}</small></div><div style="flex:1"><div><b style="font-weight:500">${esc(r.titulo||r.servicio)}</b></div><div class="muted" style="font-size:12px">#${r.num} · ${esc(projLabel(r.projectId)||r.proyecto||'Sin proyecto')} · ${esc(r.servicio)}${r.horas?` · <b>${fmtH(r.horas)}</b>`:''}</div></div>${aStatus(r.estado)}</div>`).join('')||'<div class="empty">No hay actividades para mostrar.</div>'}</div>`
     : `<div class="card tbl" style="padding:6px 8px"><table class="atable"><thead><tr>${AHEAD.map(h=>`<th>${h}</th>`).join('')}<th></th></tr></thead><tbody>
-      ${arr.map(r=>`<tr>${AKEYS.map(k=>k==='num'?`<td class="mono">${r.num}</td>`:k==='estado'?`<td>${aStatus(r.estado)}</td>`:k==='observaciones'?`<td style="min-width:220px">${esc(r[k])}</td>`:`<td>${esc(r[k])}</td>`).join('')}<td><button class="btn sm" data-aed="${esc(r.id)}">Editar</button></td></tr>`).join('') || `<tr><td colspan="14" class="empty">No hay actividades para mostrar.</td></tr>`}
+      ${arr.map(r=>`<tr>${AKEYS.map(k=>cell(r,k)).join('')}<td><button class="btn sm" data-aed="${esc(r.id)}">Editar</button></td></tr>`).join('') || `<tr><td colspan="17" class="empty">No hay actividades para mostrar.</td></tr>`}
       </tbody></table></div>`;
-    body += `<div class="note">Mostrando ${arr.length} de ${all.length} actividades registradas · sincronizadas en tus dispositivos.</div>`;
+    const sinH = arr.filter(a=>a.horas==null||a.horas==='').length;
+    body += `<div class="note">Mostrando ${arr.length} de ${all.length} actividades · ${fmtH(sumH(arr))} registradas${sinH?` · <b>${sinH} sin horas</b> · <a class="plink" id="fillH">Completar horas</a>`:''}.</div>`;
   } else {
     const bars = (key, title) => { const c = aCounts(arr, key); return `<div><h3 style="font-size:13px;margin:0 0 8px">${title}</h3>${c.map(([n,v])=>`<div class="abar"><span title="${esc(n)}">${esc(n)}</span><div class="bar"><i style="width:${arr.length?100*v/arr.length:0}%"></i></div><b class="mono">${v}</b></div>`).join('')||'<div class="muted">Sin datos</div>'}</div>`; };
-    body = `<div class="grid kpis" style="margin-bottom:16px">
+    const hb = (entries, title) => `<div><h3 style="font-size:13px;margin:0 0 8px">${title}</h3>${entries.length?hBars(entries):'<div class="muted">Sin horas registradas</div>'}</div>`;
+    const wk = iso => { const x=parseISO(iso); x.setDate(x.getDate()-((x.getDay()+6)%7)); return 'Sem. '+fmt(isoOf(x)); };
+    body = `<div class="grid kpis k5" style="margin-bottom:16px">
       <div class="card kpi"><div class="l">Total de actividades</div><div class="n">${arr.length}</div></div>
       <div class="card kpi"><div class="l">En curso</div><div class="n" style="color:var(--amber)">${curso}</div></div>
       <div class="card kpi"><div class="l">Terminadas</div><div class="n" style="color:var(--ok)">${term}</div></div>
-      <div class="card kpi"><div class="l">Fuera de horario</div><div class="n">${fuera}</div></div></div>
-      <div class="card"><h3>Resumen de actividades</h3><div class="areports">${bars('servicio','Por servicio')}${bars('tecnologia','Por tecnología')}${bars('fabricante','Por fabricante')}${bars('responsable','Por responsable')}</div></div>
-      <div class="ai-box"><h4>✦ Análisis de Claude</h4><div class="chat-out" id="a_ai" style="margin-top:0">${AI?'Pídele a Claude un análisis de estas actividades para tu reporte.':'Claude se activa al abrir el portal desde claude.ai.'}</div>${AI?'<button class="btn sm" id="a_aibtn" style="margin-top:8px">Analizar</button>':''}</div>`;
+      <div class="card kpi"><div class="l">Horas dedicadas</div><div class="n">${fmtH(sumH(arr))}</div></div>
+      <div class="card kpi"><div class="l">Fuera de horario</div><div class="n">${fuera} <span style="font-size:15px" class="muted">· ${fmtH(sumH(arr.filter(r=>r.horario==='Fuera de horario')))}</span></div></div></div>
+      <div class="card" style="margin-bottom:16px"><h3>Horas dedicadas</h3><div class="areports">${hb(aHours(arr, r=>projLabel(r.projectId)||r.proyecto||'Sin proyecto'),'Por proyecto')}${hb(aHours(arr, r=>r.projectId&&S.projects[r.projectId]?clientName(S.projects[r.projectId]):r.cliente),'Por cliente')}${hb(aHours(arr, r=>r.fechaApertura?wk(r.fechaApertura):'').sort((a,b)=>a[0].localeCompare(b[0])),'Por semana')}${hb(aHours(arr, r=>r.servicio),'Por servicio')}</div></div>
+      <div class="card"><h3>Cantidad de actividades</h3><div class="areports">${bars('servicio','Por servicio')}${bars('tecnologia','Por tecnología')}${bars('fabricante','Por fabricante')}${bars('responsable','Por responsable')}</div></div>
+      <div class="ai-box"><h4>✦ Análisis de Claude</h4><div class="chat-out" id="a_ai" style="margin-top:0">${AI?'Pídele a Claude un análisis de estas actividades para tu reporte.':'Claude no está activo en esta versión.'}</div>${AI?'<button class="btn sm" id="a_aibtn" style="margin-top:8px">Analizar</button>':''}</div>`;
   }
   m.innerHTML = `<div class="top"><div><h1>Actividades</h1><div class="sub">Registro de servicios · Área Soporte</div></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" id="a_imp">⇪ Importar Excel</button><button class="btn sm" id="a_xl">Excel</button><button class="btn sm" id="a_wd">Word</button><button class="btn primary" id="a_new">+ Nueva actividad</button></div></div>
-    <div class="toolbar"><button class="btn sm ${aTab==='registro'?'on':''}" data-atab="registro">Registros</button><button class="btn sm ${aTab==='reportes'?'on':''}" data-atab="reportes">Reportes</button></div>
+    <div class="toolbar"><button class="btn sm ${aTab==='registro'?'on':''}" data-atab="registro">Registros</button><button class="btn sm ${aTab==='reportes'?'on':''}" data-atab="reportes">Reportes y horas</button></div>
     ${filters}${body}`;
   document.querySelectorAll('[data-atab]').forEach(b => b.onclick = () => { aTab=b.dataset.atab; render(); });
-  ['desde','hasta','responsable','estado','tecnologia'].forEach(k => { const el=$('#af_'+k); el.onchange = () => { aF[k]=el.value; render(); }; });
+  ['desde','hasta','responsable','estado','tecnologia','project'].forEach(k => { const el=$('#af_'+k); el.onchange = () => { aF[k]=el.value; render(); }; });
   const qi = $('#af_q'); let qt; qi.oninput = () => { clearTimeout(qt); qt=setTimeout(()=>{ aF.q=qi.value; render(); const n=$('#af_q'); if(n){ n.focus(); n.setSelectionRange(n.value.length,n.value.length); } }, 300); };
   document.querySelectorAll('[data-aed]').forEach(b => b.onclick = () => activityModal(S.activities[b.dataset.aed]));
+  document.querySelectorAll('[data-open]').forEach(a => a.onclick = e => { e.preventDefault(); openProject = a.dataset.open; go('proyectos'); openProject = a.dataset.open; render(); });
   $('#a_new').onclick = () => activityModal();
+  if($('#fillH')) $('#fillH').onclick = () => hoursModal(arr.filter(a=>a.horas==null||a.horas===''));
   $('#a_xl').onclick = exportActivitiesXlsx;
   $('#a_wd').onclick = exportActivitiesDocx;
   $('#a_imp').onclick = importActivitiesXlsx;
   const ab = $('#a_aibtn'); if(ab) ab.onclick = async () => { ab.disabled=true; const out=$('#a_ai'); out.textContent='Pensando…';
-    try{ await AI(`Analiza estas actividades del Área Soporte (ingeniería de redes, Chile) y entrega en español, breve y accionable: 1) resumen del período, 2) carga por responsable y tecnología, 3) actividades en curso que llevan más tiempo abiertas, 4) recomendaciones. Máximo 15 líneas. Hoy: ${isoOf(TODAY)}.\nDatos (filtrados): ${JSON.stringify(arr.slice(0,300).map(r=>({id:r.num,apertura:r.fechaApertura,cierre:r.fechaCierre,horario:r.horario,servicio:r.servicio,solicitante:r.solicitante,responsable:r.responsable,tecnologia:r.tecnologia,fabricante:r.fabricante,estado:r.estado,cliente:r.cliente,proyecto:r.proyecto,obs:String(r.observaciones||'').slice(0,200)})))}`,
+    try{ await AI(`Analiza estas actividades del Área Soporte (ingeniería de redes, Chile) y entrega en español, breve y accionable: 1) resumen del período, 2) horas por proyecto/cliente y carga fuera de horario, 3) actividades en curso que llevan más tiempo abiertas, 4) recomendaciones. Máximo 15 líneas. Hoy: ${isoOf(TODAY)}.\nDatos (filtrados): ${JSON.stringify(arr.slice(0,300).map(r=>({id:r.num,apertura:r.fechaApertura,cierre:r.fechaCierre,horario:r.horario,servicio:r.servicio,responsable:r.responsable,tecnologia:r.tecnologia,fabricante:r.fabricante,estado:r.estado,cliente:r.cliente,proyecto:projLabel(r.projectId)||r.proyecto,detalle:r.titulo,horas:r.horas,obs:String(r.observaciones||'').slice(0,160)})))}`,
       {onText:({text})=>{ out.innerHTML = lightMd(text); }, cache:false}); }
     catch(e){ out.textContent = 'No se pudo consultar a Claude.'; }
     ab.disabled=false; };
 }
-function activityModal(r){
-  const isNew = !r; r = r || {fechaApertura:d(0), fechaCierre:'', horario:'Horario laboral', servicio:'', solicitante:'', responsable:'Alexis Arcos', tecnologia:'', fabricante:'', estado:'En curso', cliente:'', proyecto:'', observaciones:''};
-  modal(`<h3>${isNew?'Registrar nueva actividad':'Editar actividad #'+r.num}</h3>
+function activityModal(r, pre={}){
+  const isNew = !r;
+  const base = {fechaApertura:d(0), fechaCierre:'', horario:'Horario laboral', servicio:'', solicitante:'Implementacion Tecnica', responsable:'Alexis Arcos', tecnologia:'', fabricante:'', estado:'En curso', cliente:'', proyecto:'', projectId:'', titulo:'', contacto:'', horas:'', observaciones:''};
+  r = r || {...base, ...pre};
+  if(isNew && r.projectId && S.projects[r.projectId]){ const p=S.projects[r.projectId]; const last = activities().filter(a=>a.projectId===p.id).sort((a,b)=>String(b.fechaApertura).localeCompare(String(a.fechaApertura)))[0]; if(last){ r.tecnologia=last.tecnologia; r.fabricante=last.fabricante; r.servicio=last.servicio; r.solicitante=last.solicitante; r.contacto=last.contacto; } }
+  const contactos = [...new Set(activities().map(a=>a.contacto).filter(Boolean))].sort();
+  modal(`<h3>${isNew?'Registrar actividad':'Editar actividad #'+r.num}</h3>
+    <div class="field"><label>Proyecto</label><select id="ac_pj"><option value="">— Sin proyecto (soporte general) —</option>${clients().map(c=>{ const ps=projects().filter(p=>p.clientId===c.id); return ps.length?`<optgroup label="${esc(c.name)}">${ps.map(p=>`<option value="${esc(p.id)}" ${r.projectId===p.id?'selected':''}>${esc(p.id)} · ${esc(p.name)}${p.status==='Cerrado'?' (cerrado)':''}</option>`).join('')}</optgroup>`:''; }).join('')}${projects().filter(p=>!p.clientId||!S.clients[p.clientId]).map(p=>`<option value="${esc(p.id)}" ${r.projectId===p.id?'selected':''}>${esc(p.id)} · ${esc(p.name)}</option>`).join('')}<option value="__new">＋ Crear proyecto nuevo…</option></select></div>
+    <div class="field"><label>Actividad / detalle *</label><input id="ac_ti" maxlength="160" value="${esc(r.titulo||'')}" placeholder="Ej: Configuración de interfaces y ruteo BGP"></div>
     <div class="frow"><div class="field"><label>Fecha apertura *</label><input type="date" id="ac_fa" value="${esc(r.fechaApertura)}"></div><div class="field"><label>Fecha cierre</label><input type="date" id="ac_fc" value="${esc(r.fechaCierre)}"></div></div>
-    <div class="frow"><div class="field"><label>Tipo de horario *</label><select id="ac_ho">${aOpts(ALISTS.horario, r.horario)}</select></div><div class="field"><label>Estado *</label><select id="ac_es">${aOpts(ALISTS.estado, r.estado)}</select></div></div>
-    <div class="frow"><div class="field"><label>Servicio *</label><select id="ac_se">${aOpts(ALISTS.servicio, r.servicio, 'Seleccionar…')}</select></div><div class="field"><label>Solicitante</label><select id="ac_so">${aOpts(ALISTS.solicitante, r.solicitante, 'Seleccionar…')}</select></div></div>
-    <div class="frow"><div class="field"><label>Responsable *</label><select id="ac_re">${aOpts(ALISTS.responsable.includes(r.responsable)||!r.responsable?ALISTS.responsable:[...ALISTS.responsable, r.responsable], r.responsable)}</select></div><div class="field"><label>Tecnología</label><select id="ac_te">${aOpts(ALISTS.tecnologia, r.tecnologia, 'Seleccionar…')}</select></div></div>
-    <div class="frow"><div class="field"><label>Fabricante</label><select id="ac_fb">${aOpts(ALISTS.fabricante, r.fabricante, 'Seleccionar…')}</select></div><div class="field"><label>Cliente</label><input id="ac_cl" maxlength="120" value="${esc(r.cliente)}" placeholder="Nombre del cliente"></div></div>
-    <div class="field"><label>Proyecto</label><input id="ac_pr" maxlength="160" list="ac_prl" value="${esc(r.proyecto)}" placeholder="Nombre del proyecto"><datalist id="ac_prl">${projects().map(p=>`<option value="${esc(p.name)}">${esc(p.id)}</option>`).join('')}</datalist></div>
-    <div class="field"><label>Observaciones</label><textarea id="ac_ob" rows="3" placeholder="Detalle, avances, acuerdos o próximos pasos…">${esc(r.observaciones)}</textarea></div>
+    <div class="frow"><div class="field"><label>Horas dedicadas *</label><input type="number" id="ac_hh" min="0" max="200" step="0.5" value="${r.horas!=null?esc(r.horas):''}" placeholder="Ej: 3.5"></div><div class="field"><label>Tipo de horario *</label><select id="ac_ho">${aOpts(ALISTS.horario, r.horario)}</select></div></div>
+    <div class="frow"><div class="field"><label>Servicio *</label><select id="ac_se">${aOpts(ALISTS.servicio, r.servicio, 'Seleccionar…')}</select></div><div class="field"><label>Estado *</label><select id="ac_es">${aOpts(ALISTS.estado, r.estado)}</select></div></div>
+    <div class="frow"><div class="field"><label>Solicitante</label><select id="ac_so">${aOpts(ALISTS.solicitante, r.solicitante, 'Seleccionar…')}</select></div><div class="field"><label>Responsable *</label><select id="ac_re">${aOpts(ALISTS.responsable.includes(r.responsable)||!r.responsable?ALISTS.responsable:[...ALISTS.responsable, r.responsable], r.responsable)}</select></div></div>
+    <div class="frow"><div class="field"><label>Tecnología</label><select id="ac_te">${aOpts(ALISTS.tecnologia, r.tecnologia, 'Seleccionar…')}</select></div><div class="field"><label>Fabricante</label><select id="ac_fb">${aOpts(ALISTS.fabricante, r.fabricante, 'Seleccionar…')}</select></div></div>
+    <div class="frow"><div class="field"><label>Cliente</label><input id="ac_cl" maxlength="120" value="${esc(r.cliente)}" placeholder="Se completa con el proyecto"></div><div class="field"><label>Contacto</label><input id="ac_ct" maxlength="80" list="ac_ctl" value="${esc(r.contacto||'')}" placeholder="Ej: Jose Rios"><datalist id="ac_ctl">${contactos.map(c=>`<option value="${esc(c)}">`).join('')}</datalist></div></div>
+    <div class="field"><label>Observaciones</label><textarea id="ac_ob" rows="3" placeholder="Avances, acuerdos o próximos pasos…">${esc(r.observaciones)}</textarea></div>
     <div id="ac_err" style="color:var(--warn);font-size:13px;margin-bottom:8px"></div>
     <div style="display:flex;gap:8px;justify-content:space-between">${isNew?'<span></span>':'<button class="btn" id="ac_del" style="color:var(--warn)">Eliminar</button>'}<div style="display:flex;gap:8px"><button class="btn" data-close>Cancelar</button><button class="btn primary" id="ac_ok">${isNew?'Guardar actividad':'Guardar cambios'}</button></div></div>`);
+  const syncClient = () => { const p = S.projects[$('#ac_pj').value]; if(p){ $('#ac_cl').value = clientName(p); } };
+  $('#ac_pj').onchange = () => { if($('#ac_pj').value==='__new'){ const draft = collect(); projectModal(null, {name:draft.titulo, onSave: np => activityModal(isNew?null:r, {...draft, projectId:np.id})}); return; } syncClient(); };
+  const collect = () => ({fechaApertura:$('#ac_fa').value, fechaCierre:$('#ac_fc').value, horario:$('#ac_ho').value, estado:$('#ac_es').value, servicio:$('#ac_se').value, solicitante:$('#ac_so').value, responsable:$('#ac_re').value, tecnologia:$('#ac_te').value, fabricante:$('#ac_fb').value, cliente:$('#ac_cl').value.trim(), titulo:$('#ac_ti').value.trim(), contacto:$('#ac_ct').value.trim(), observaciones:$('#ac_ob').value.trim(), horas:$('#ac_hh').value===''?null:+$('#ac_hh').value, projectId:$('#ac_pj').value==='__new'?'':$('#ac_pj').value});
+  if(isNew && r.projectId) syncClient();
   $('#ac_ok').onclick = () => {
-    const v = {fechaApertura:$('#ac_fa').value, fechaCierre:$('#ac_fc').value, horario:$('#ac_ho').value, estado:$('#ac_es').value, servicio:$('#ac_se').value, solicitante:$('#ac_so').value, responsable:$('#ac_re').value, tecnologia:$('#ac_te').value, fabricante:$('#ac_fb').value, cliente:$('#ac_cl').value.trim(), proyecto:$('#ac_pr').value.trim(), observaciones:$('#ac_ob').value.trim()};
-    if(!v.fechaApertura || !v.horario || !v.servicio || !v.responsable || !v.estado){ $('#ac_err').textContent='Completa los campos con *.'; return; }
+    const v = collect();
+    if(!v.fechaApertura || !v.horario || !v.servicio || !v.responsable || !v.estado || !v.titulo){ $('#ac_err').textContent='Completa los campos con *.'; return; }
+    if(v.horas==null || isNaN(v.horas) || v.horas<0){ $('#ac_err').textContent='Indica las horas dedicadas (puede ser 0.5, 1, 2…).'; return; }
     if(v.fechaCierre && v.fechaCierre < v.fechaApertura){ $('#ac_err').textContent='La fecha de cierre no puede ser anterior a la fecha de apertura.'; return; }
     if(v.estado==='Terminado' && !v.fechaCierre) v.fechaCierre = d(0);
+    const p = S.projects[v.projectId]; v.proyecto = p ? p.name : ''; v.clientId = p ? (p.clientId||'') : (resolveClient(v.cliente)||{}).id||'';
     const num = isNew ? aNext() : r.num;
     put('activity', {...r, ...v, id:r.id||('A'+num), num});
-    closeModal(); toast(isNew?'Actividad #'+num+' registrada':'Actividad actualizada'); render(); };
+    closeModal(); toast(isNew?`Actividad #${num} registrada · ${fmtH(v.horas)}`:'Actividad actualizada'); render(); };
   if(!isNew) $('#ac_del').onclick = () => confirmBox(`¿Eliminar la actividad #${r.num}?`, () => { del('activity', r.id); render(); toast('Actividad eliminada'); });
 }
 async function exportActivitiesXlsx(){
@@ -1346,12 +1448,15 @@ async function exportActivitiesXlsx(){
   if(!all.length){ toast('No hay actividades para exportar'); return; }
   try{
     await lib('xlsx');
-    const ws = XLSX.utils.aoa_to_sheet([AHEAD, ...all.map(r=>AKEYS.map(k=>r[k]??''))]);
-    ws['!cols'] = [7,14,14,18,30,24,20,22,16,14,25,30,55].map(w=>({wch:w}));
+    const rows = all.map(r=>AKEYS.map(k=>k==='proyecto'?(projLabel(r.projectId)||r.proyecto||''):k==='horas'?(r.horas==null||r.horas===''?'':+r.horas):(r[k]??'')));
+    const ws = XLSX.utils.aoa_to_sheet([AHEAD, ...rows]);
+    ws['!cols'] = [7,14,14,18,28,22,18,20,14,12,26,34,40,8,22,55].map(w=>({wch:w}));
     const c = k => aCounts(all, k);
-    const summary = [["REPORTE DE ACTIVIDADES"],["Fecha de exportación",new Date().toLocaleString('es-CL')],["Total de actividades",all.length],["En curso",all.filter(r=>r.estado==='En curso').length],["Terminadas",all.filter(r=>r.estado==='Terminado').length],["Fuera de horario",all.filter(r=>r.horario==='Fuera de horario').length],[],["Distribución por servicio","Cantidad"],...c('servicio'),[],["Distribución por responsable","Cantidad"],...c('responsable'),[],["Distribución por tecnología","Cantidad"],...c('tecnologia'),[],["Distribución por fabricante","Cantidad"],...c('fabricante')];
-    const wr = XLSX.utils.aoa_to_sheet(summary); wr['!cols'] = [{wch:35},{wch:25}];
-    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Registro Servicios'); XLSX.utils.book_append_sheet(wb, wr, 'Resumen');
+    const summary = [["REPORTE DE ACTIVIDADES"],["Fecha de exportación",new Date().toLocaleString('es-CL')],["Total de actividades",all.length],["En curso",all.filter(r=>r.estado==='En curso').length],["Terminadas",all.filter(r=>r.estado==='Terminado').length],["Fuera de horario",all.filter(r=>r.horario==='Fuera de horario').length],["Horas dedicadas",sumH(all)],[],["Horas por proyecto","Horas"],...aHours(all, r=>projLabel(r.projectId)||r.proyecto||'Sin proyecto'),[],["Distribución por servicio","Cantidad"],...c('servicio'),[],["Distribución por responsable","Cantidad"],...c('responsable'),[],["Distribución por tecnología","Cantidad"],...c('tecnologia'),[],["Distribución por fabricante","Cantidad"],...c('fabricante')];
+    const wr = XLSX.utils.aoa_to_sheet(summary); wr['!cols'] = [{wch:45},{wch:20}];
+    const H = projHours();
+    const wp = XLSX.utils.json_to_sheet(projects().map(p=>({ID:p.id, Proyecto:p.name, Cliente:clientName(p), Tipo:p.tipo||'Proyecto', Estado:p.status, Inicio:p.start||'', Cierre:p.end||'', Actividades:H[p.id]?.n||0, Horas:Math.round((H[p.id]?.h||0)*10)/10}))); wp['!cols']=[8,44,40,10,12,12,12,12,8].map(w=>({wch:w}));
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Registro Servicios'); XLSX.utils.book_append_sheet(wb, wp, 'Proyectos'); XLSX.utils.book_append_sheet(wb, wr, 'Resumen');
     offerFile(`Seguimiento_Actividades_${stamp()}.xlsx`, new Uint8Array(XLSX.write(wb,{bookType:'xlsx',type:'array'})), {title:'Seguimiento de actividades en Excel'});
   }catch(e){ toast('No se pudo generar el Excel'); }
 }
@@ -1360,10 +1465,11 @@ async function exportActivitiesDocx(){
   const per = [aF.desde?'desde '+fmt(aF.desde):'', aF.hasta?'hasta '+fmt(aF.hasta):''].filter(Boolean).join(' ') || 'todas las fechas';
   const tbl = (k, t) => [{h2:t},{table:[[t.replace('Por ',''),'Cantidad'], ...aCounts(arr,k).map(([n,v])=>[n,String(v)])]}];
   try{
-    const u8 = await buildDocx([{h1:'Reporte de actividades · Área Soporte'},{sub:`${per}${aF.responsable?' · '+aF.responsable:''} · generado ${TODAY.toLocaleDateString('es-CL',{day:'numeric',month:'long',year:'numeric'})}`},
-      {h2:'Resumen'},{table:[['Total','En curso','Terminadas','Fuera de horario'],[String(arr.length), String(arr.filter(r=>r.estado==='En curso').length), String(arr.filter(r=>r.estado==='Terminado').length), String(arr.filter(r=>r.horario==='Fuera de horario').length)]]},
-      ...tbl('servicio','Por servicio'), ...tbl('tecnologia','Por tecnología'), ...tbl('responsable','Por responsable'),
-      {h2:'Detalle'},{table:[['ID','Apertura','Cierre','Servicio','Responsable','Tecnología','Estado','Cliente','Proyecto'], ...arr.map(r=>[String(r.num), r.fechaApertura||'', r.fechaCierre||'', r.servicio||'', r.responsable||'', r.tecnologia||'', r.estado||'', r.cliente||'', r.proyecto||''])]}]);
+    const u8 = await buildDocx([{h1:'Reporte de actividades · Área Soporte'},{sub:`${per}${aF.responsable?' · '+aF.responsable:''}${aF.project?' · '+(projLabel(aF.project)||'Sin proyecto'):''} · generado ${TODAY.toLocaleDateString('es-CL',{day:'numeric',month:'long',year:'numeric'})}`},
+      {h2:'Resumen'},{table:[['Total','En curso','Terminadas','Fuera de horario','Horas'],[String(arr.length), String(arr.filter(r=>r.estado==='En curso').length), String(arr.filter(r=>r.estado==='Terminado').length), String(arr.filter(r=>r.horario==='Fuera de horario').length), fmtH(sumH(arr))]]},
+      {h2:'Horas por proyecto'},{table:[['Proyecto','Horas'], ...aHours(arr, r=>projLabel(r.projectId)||r.proyecto||'Sin proyecto').map(([n,v])=>[n,fmtH(v)])]},
+      ...tbl('servicio','Por servicio'), ...tbl('tecnologia','Por tecnología'),
+      {h2:'Detalle'},{table:[['ID','Fecha','Proyecto','Actividad','Servicio','Horas','Estado'], ...arr.map(r=>[String(r.num), r.fechaApertura||'', projLabel(r.projectId)||r.proyecto||'', r.titulo||'', r.servicio||'', r.horas!=null&&r.horas!==''?String(r.horas):'', r.estado||''])]}]);
     offerFile(`Reporte_Actividades_${stamp()}.docx`, u8, {title:'Reporte de actividades en Word'});
   }catch(e){ toast('No se pudo generar el Word'); }
 }
@@ -1373,28 +1479,154 @@ async function importActivitiesXlsx(){
     await lib('xlsx');
     const wb = XLSX.read(await f.arrayBuffer(), {type:'array', cellDates:true});
     const sn = wb.SheetNames.find(n=>/registro/i.test(n)) || wb.SheetNames[0];
-    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], {defval:''});
-    const norm = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
-    const col = {}; AHEAD.forEach((h,i)=>col[norm(h)]=AKEYS[i]); col['tipo horario']='horario'; col['horario']='horario'; col['id']='num';
+    const grid = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, defval:''});
+    const hi = grid.findIndex(row => row.some(c=>normTxt(c)==='fecha apertura'));
+    if(hi<0){ toast('No encontré la columna "Fecha apertura" en ese Excel'); return; }
+    const head = grid[hi].map(normTxt);
+    const map = {'id':'num','fecha apertura':'fechaApertura','fecha cierre':'fechaCierre','tipo de horario':'horario','horario':'horario','servicio':'servicio','solicitante':'solicitante','responsable':'responsable','tecnologia':'tecnologia','fabricante':'fabricante','estado':'estado','cliente':'cliente','proyecto':'proyecto','actividad detalle':'titulo','actividad':'titulo','detalle':'titulo','horas':'horas','horas dedicadas':'horas','hh':'horas','contacto':'contacto','observaciones':'observaciones'};
     const dateOf = v => v instanceof Date ? isoOf(v) : /^\d{4}-\d{2}-\d{2}/.test(String(v)) ? String(v).slice(0,10) : (()=>{ const m=String(v).match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/); return m ? `${m[3].length===2?'20'+m[3]:m[3]}-${pad(m[2])}-${pad(m[1])}` : ''; })();
-    const existing = new Set(activities().map(r=>`${r.fechaApertura}|${r.servicio}|${r.cliente}|${r.proyecto}|${r.responsable}`));
-    let next = aNext(); const nuevos = []; let dup = 0;
-    rows.forEach(row => {
-      const r = {}; Object.keys(row).forEach(k => { const key = col[norm(k)]; if(key) r[key] = row[k]; });
+    const key = r => [r.fechaApertura, normTxt(r.servicio), normTxt(r.titulo||r.proyecto), normTxt(r.responsable), normTxt(r.tecnologia)].join('|');
+    const existing = new Set(activities().map(r=>key({...r, titulo:r.titulo||r.proyecto})));
+    const recs = []; let dup = 0;
+    grid.slice(hi+1).forEach(row => {
+      const r = {}; head.forEach((h,i)=>{ const k = map[h]; if(k && r[k]===undefined) r[k] = row[i]; });
       if(!r.fechaApertura && !r.servicio) return;
       r.fechaApertura = dateOf(r.fechaApertura); r.fechaCierre = dateOf(r.fechaCierre);
-      ['horario','servicio','solicitante','responsable','tecnologia','fabricante','estado','cliente','proyecto','observaciones'].forEach(k => r[k] = String(r[k]??'').trim());
+      ['horario','servicio','solicitante','responsable','tecnologia','fabricante','estado','cliente','proyecto','titulo','contacto','observaciones'].forEach(k => r[k] = String(r[k]??'').trim());
+      r.horas = r.horas===''||r.horas==null ? null : (parseFloat(String(r.horas).replace(',','.'))||0);
       if(!ALISTS.estado.includes(r.estado)) r.estado = r.fechaCierre ? 'Terminado' : 'En curso';
-      const key = `${r.fechaApertura}|${r.servicio}|${r.cliente}|${r.proyecto}|${r.responsable}`;
-      if(existing.has(key)){ dup++; return; } existing.add(key);
-      const num = next++; nuevos.push({...r, num, id:'A'+num, origen:f.name});
+      if(!r.titulo) r.titulo = r.proyecto;
+      if(existing.has(key(r))){ dup++; return; } existing.add(key(r));
+      recs.push(r);
     });
-    if(!nuevos.length){ toast(dup ? 'Todas las actividades de ese Excel ya estaban en el portal' : 'No encontré actividades en ese Excel'); return; }
-    modal(`<h3>Importar actividades</h3><p>Encontré <b>${nuevos.length}</b> actividad(es) nueva(s) en <i>${esc(f.name)}</i>${dup?` y ${dup} que ya estaban (se omiten)`:''}.</p>
-      <div class="note" style="margin:0 0 14px">Usa el Excel que genera tu planilla "Seguimiento de Actividades" (botón Exportar a Excel), hoja "Registro Servicios". Se les asigna un ID nuevo correlativo.</div>
-      <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" data-close>Cancelar</button><button class="btn primary" id="ai_ok">Importar ${nuevos.length}</button></div>`);
-    $('#ai_ok').onclick = async () => { $('#ai_ok').disabled = true; $('#ai_ok').textContent='Importando…'; for(const a of nuevos) await put('activity', a); closeModal(); toast(`${nuevos.length} actividades importadas`); render(); };
-  }catch(e){ toast('No pude leer ese Excel'); }
+    if(!recs.length){ toast(dup ? 'Todas las actividades de ese Excel ya estaban en el portal' : 'No encontré actividades en ese Excel'); return; }
+    const unknown = {}; recs.forEach(r => { const p = resolveProject(r.proyecto); if(p) r.projectId = p.id; else if(r.proyecto){ const k = normTxt(r.proyecto); (unknown[k] = unknown[k] || {text:r.proyecto, cliente:r.cliente, n:0}).n++; } });
+    const U = Object.entries(unknown);
+    const popts = projects().map(p=>`<option value="${esc(p.id)}">${esc(p.id)} · ${esc(p.name)}</option>`).join('');
+    modal(`<h3>Importar actividades</h3><p style="margin-top:0">Encontré <b>${recs.length}</b> actividad(es) nueva(s) en <i>${esc(f.name)}</i>${dup?` · ${dup} ya estaban (se omiten)`:''}. ${recs.length-U.reduce((s,[,u])=>s+u.n,0)} se asignaron solas a proyectos existentes.</p>
+      ${U.length?`<div style="font-weight:600;margin:10px 0 6px">¿A qué proyecto va cada nombre nuevo?</div><div style="max-height:300px;overflow:auto">${U.map(([k,u],i)=>`<div class="list-item"><div style="flex:1;min-width:0"><b style="font-weight:500">${esc(u.text)}</b><div class="muted" style="font-size:12px">${esc(u.cliente||'Sin cliente')} · ${u.n} actividad(es)</div></div><select data-unk="${i}" style="max-width:48%"><option value="__new">＋ Crear proyecto con este nombre</option>${popts}<option value="">Sin proyecto</option></select></div>`).join('')}</div><div class="muted" style="font-size:12px;margin-top:6px">El nombre del Excel se guarda como alias del proyecto, así la próxima importación se asigna sola.</div>`:''}
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button class="btn" data-close>Cancelar</button><button class="btn primary" id="ai_ok">Importar ${recs.length}</button></div>`);
+    $('#ai_ok').onclick = async () => { $('#ai_ok').disabled = true; $('#ai_ok').textContent='Importando…';
+      const choice = {}; document.querySelectorAll('[data-unk]').forEach(s => choice[U[+s.dataset.unk][0]] = s.value);
+      for(const [k,u] of U){ let pid = choice[k];
+        if(pid==='__new'){ const cid = await ensureClient(u.cliente); pid = nextProjectId(); await put('project', {id:pid, name:u.text, clientId:cid, client:clientNameById(cid), tipo:'Proyecto', status:'En curso', progress:0, start:'', end:'', aliases:[u.text], owner:'Alexis Arcos'}); }
+        else if(pid && S.projects[pid]){ const p=S.projects[pid]; if(!(p.aliases||[]).some(a=>normTxt(a)===k)) await put('project', {...p, aliases:[...(p.aliases||[]), u.text]}); }
+        choice[k] = pid; }
+      let next = aNext();
+      for(const r of recs){ if(!r.projectId && r.proyecto) r.projectId = choice[normTxt(r.proyecto)] || '';
+        const p = S.projects[r.projectId]; if(p){ r.proyecto = p.name; r.clientId = p.clientId||''; if(!p.start || r.fechaApertura < p.start) await put('project', {...p, start:r.fechaApertura}); } else r.clientId = (resolveClient(r.cliente)||{}).id||'';
+        const num = next++; await put('activity', {...r, num, id:'A'+num, numOriginal:r.num, origen:f.name}); }
+      closeModal(); toast(`${recs.length} actividades importadas`); render(); };
+  }catch(e){ console.error(e); toast('No pude leer ese Excel'); }
+}
+
+function hoursModal(list){
+  list = list.slice().sort((a,b)=>String(a.fechaApertura).localeCompare(String(b.fechaApertura)));
+  if(!list.length){ toast('Todas tienen horas'); return; }
+  modal(`<h3>Completar horas</h3><div class="muted" style="font-size:13px;margin-bottom:8px">${list.length} actividad(es) sin horas. Escribe las horas dedicadas (ej. 2 o 3.5); deja en blanco las que no sepas.</div>
+    <div style="max-height:55vh;overflow:auto">${list.map(a=>`<div class="list-item" style="align-items:center"><div style="flex:1;min-width:0"><b style="font-weight:500">${esc(a.titulo||a.servicio)}</b><div class="muted" style="font-size:12px">#${a.num} · ${fmt(a.fechaApertura)} · ${esc(projLabel(a.projectId)||a.proyecto||'')} · ${a.horario==='Fuera de horario'?'Fuera de horario':'Laboral'}</div></div><input type="number" min="0" step="0.5" data-hh="${esc(a.id)}" style="width:80px;border:1px solid var(--line);border-radius:8px;padding:6px 8px" placeholder="h"></div>`).join('')}</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px"><button class="btn" data-close>Cancelar</button><button class="btn primary" id="hh_ok">Guardar horas</button></div>`);
+  $('#hh_ok').onclick = async () => { $('#hh_ok').disabled=true; let n=0;
+    for(const inp of document.querySelectorAll('[data-hh]')){ if(inp.value==='') continue; const v=parseFloat(inp.value.replace(',','.')); if(isNaN(v)||v<0) continue; const a=S.activities[inp.dataset.hh]; if(a){ await put('activity', {...a, horas:v}); n++; } }
+    closeModal(); toast(n?`Horas guardadas en ${n} actividad(es)`:'No ingresaste horas'); render(); };
+}
+
+// ============ Respaldo completo (JSON) ============
+function backupItems(){ const out=[]; for(const [kind,bucket] of Object.entries(KIND)) Object.values(S[bucket]).forEach(o=>out.push({...o, kind})); return out; }
+function exportBackup(){
+  const data = {app:'portal-proyectos', version:2, exportedAt:new Date().toISOString(), items:backupItems()};
+  offerFile(`Respaldo_Portal_${stamp()}.json`, new TextEncoder().encode(JSON.stringify(data)), {title:'Respaldo completo', text:true, note:'Guárdalo: con este archivo puedes restaurar o mover todos tus datos a otra versión del portal.'});
+}
+async function importBackup(){
+  const f = await pickFile('.json,application/json'); if(!f) return;
+  let data; try{ data = JSON.parse(await f.text()); }catch(e){ toast('Ese archivo no es un respaldo válido'); return; }
+  const items = (data && Array.isArray(data.items)) ? data.items.filter(o=>o && KIND[o.kind] && o.id) : [];
+  if(!items.length){ toast('El respaldo no tiene datos'); return; }
+  const cnt = {}; items.forEach(o=>cnt[o.kind]=(cnt[o.kind]||0)+1);
+  const names = {client:'clientes',project:'proyectos',activity:'actividades',task:'pendientes',meeting:'reuniones',diagram:'diagramas',config:'ajustes',ics:'calendarios'};
+  modal(`<h3>Restaurar respaldo</h3><p style="margin-top:0"><i>${esc(f.name)}</i>${data.exportedAt?` · ${esc(new Date(data.exportedAt).toLocaleString('es-CL'))}`:''}</p>
+    <p>${Object.entries(cnt).map(([k,v])=>`${v} ${names[k]||k}`).join(' · ')}</p>
+    <div class="note" style="margin:0 0 14px">Se agregan o actualizan estos elementos. Lo que ya tengas con otro ID no se borra.</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" data-close>Cancelar</button><button class="btn primary" id="rb_ok">Restaurar ${items.length}</button></div>`);
+  $('#rb_ok').onclick = async () => { $('#rb_ok').disabled=true; $('#rb_ok').textContent='Restaurando…';
+    if(mode==='server'){ try{ const r = await fetch('/api/bulk',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({items})}); if(!r.ok) throw 0; await serverLoad(true); }catch(e){ toast('No se pudo restaurar en el servidor'); return; } }
+    else { for(const o of items){ const {kind, ...rest} = o; await put(kind, rest); } }
+    closeModal(); toast(`Restaurados ${items.length} elementos`); render(); };
+}
+function listsModal(){
+  const keys = [['servicio','Servicios'],['solicitante','Solicitantes'],['responsable','Responsables'],['tecnologia','Tecnologías'],['fabricante','Fabricantes']];
+  modal(`<h3>Listas de Actividades</h3><div class="muted" style="font-size:13px;margin-bottom:10px">Una opción por línea.</div>
+    ${keys.map(([k,l])=>`<div class="field"><label>${l}</label><textarea id="ls_${k}" rows="4">${esc(ALISTS[k].join('\n'))}</textarea></div>`).join('')}
+    <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" data-close>Cancelar</button><button class="btn primary" id="ls_ok">Guardar</button></div>`);
+  $('#ls_ok').onclick = () => { const o = {id:'listas'}; keys.forEach(([k])=>o[k]=$('#ls_'+k).value.split('\n').map(s=>s.trim()).filter(Boolean)); put('config', o); closeModal(); toast('Listas actualizadas'); render(); };
+}
+
+// ============ Modo servidor (Cloudflare Pages + D1) ============
+let SRV = {rev:'', timer:null, outbox:[], user:''};
+try{ SRV.outbox = JSON.parse(localStorage.getItem('pp-outbox')||'[]'); }catch(e){}
+const saveOutbox = () => { try{ localStorage.setItem('pp-outbox', JSON.stringify(SRV.outbox)); }catch(e){} };
+async function srvSend(op){
+  const url = '/api/items/'+encodeURIComponent(op.kind)+'/'+encodeURIComponent(op.id);
+  const r = await fetch(url, op.del ? {method:'DELETE'} : {method:'PUT', headers:{'content-type':'application/json'}, body:JSON.stringify(op.obj)});
+  if(r.status===401 || r.status===403){ toast('Tu sesión expiró: recarga la página para volver a entrar'); throw new Error('auth'); }
+  if(!r.ok) throw new Error('http '+r.status);
+}
+async function srvQueue(op){
+  SRV.outbox = SRV.outbox.filter(o=>!(o.kind===op.kind && o.id===op.id)); SRV.outbox.push(op); saveOutbox();
+  await flushOutbox();
+}
+async function flushOutbox(){
+  while(SRV.outbox.length){
+    const op = SRV.outbox[0];
+    try{ await srvSend(op); SRV.outbox.shift(); saveOutbox(); }
+    catch(e){ setSync('local', `Sin conexión · ${SRV.outbox.length} cambio(s) por subir`); return false; }
+  }
+  setSync('server', 'Guardado en tu servidor Cloudflare'); return true;
+}
+function srvCache(){ try{ localStorage.setItem('pp-server-cache', JSON.stringify(S)); }catch(e){} }
+async function serverLoad(force){
+  if(SRV.outbox.length) await flushOutbox();
+  const r = await fetch('/api/items'+(force?'':'?rev='+encodeURIComponent(SRV.rev)), {cache:'no-store'});
+  if(r.status===304) return;
+  if(!r.ok) throw new Error('http '+r.status);
+  const data = await r.json();
+  if(!force && data.rev===SRV.rev) return;
+  SRV.rev = data.rev;
+  for(const k in S) S[k] = {};
+  (data.items||[]).forEach(o => { const b = KIND[o.kind]; if(b && o.id){ const {kind, ...rest} = o; S[b][o.id] = rest; } });
+  srvCache(); scheduleRender();
+}
+function makeServerAI(){
+  const call = async (prompt, opts={}) => {
+    const r = await fetch('/api/claude', {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({prompt, json:!!opts.json})});
+    if(r.status===429) throw {code:'rate_limited'};
+    if(!r.ok) throw {code:'unavailable'};
+    const {text} = await r.json(); return text||'';
+  };
+  const ai = async (input, opts={}) => { const prompt = Array.isArray(input) ? input.map(m=>m.content).join('\n\n') : input; const text = await call(prompt); if(opts.onText) opts.onText({text, delta:text}); return {text, truncated:false}; };
+  ai.json = async (input) => { const prompt = (Array.isArray(input) ? input.map(m=>m.content).join('\n\n') : input) + '\n\nResponde SOLO con JSON válido, sin texto adicional ni bloques de código.'; const t = await call(prompt, {json:true}); const m = t.match(/[\[{][\s\S]*[\]}]/); return JSON.parse(m ? m[0] : t); };
+  return ai;
+}
+function browserDownloads(){
+  return { save: async ({filename, data}) => { const blob = data instanceof Blob ? data : new Blob([data]); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url), 4000); return {status:'saved'}; } };
+}
+async function tryServer(){
+  if(window.claude || !/^https?:$/.test(location.protocol)) return false;
+  let h; try{ const r = await fetch('/api/health', {cache:'no-store'}); if(!r.ok) return false; h = await r.json(); }catch(e){ return false; }
+  if(!h || h.app!=='portal-proyectos') return false;
+  if(h.allowed===false){ document.getElementById('main').innerHTML = '<div class="empty"><h2>Acceso no autorizado</h2><p>Tu correo no está en la lista de usuarios permitidos de este portal.</p></div>'; return true; }
+  mode = 'server'; SRV.user = h.user||''; SRV.protected = !!h.protected;
+  DL = browserDownloads();
+  if(h.ai) AI = makeServerAI();
+  try{ const c = JSON.parse(localStorage.getItem('pp-server-cache')); if(c) Object.assign(S, c); }catch(e){}
+  setSync('server', h.user ? `Conectado como ${h.user}` : 'Guardado en tu servidor Cloudflare');
+  if(!h.protected) setTimeout(()=>toast('⚠ Portal sin protección de acceso: configura Cloudflare Access y ALLOWED_EMAILS'), 1500);
+  render();
+  try{ await serverLoad(true); }catch(e){ setSync('local', 'No se pudo leer el servidor; mostrando copia local'); }
+  SRV.timer = setInterval(()=>{ if(!document.hidden) serverLoad(false).catch(()=>{}); }, 20000);
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) serverLoad(false).catch(()=>{}); });
+  window.addEventListener('online', ()=>flushOutbox().then(()=>serverLoad(false)).catch(()=>{}));
+  return true;
 }
 
 // ============ Modal ============
