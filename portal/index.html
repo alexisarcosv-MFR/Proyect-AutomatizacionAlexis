@@ -198,7 +198,8 @@ const KIND = {project:'projects',task:'tasks',meeting:'meetings',diagram:'diagra
 let DB = null, AI = null, MCP = null, DL = null, mode = 'loading', pending = false, dragging = false;
 const uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2,5);
 const projects = () => Object.values(S.projects).sort((a,b)=>a.id.localeCompare(b.id));
-const tasks = () => Object.values(S.tasks);
+const tasks = () => Object.values(S.tasks).filter(t=>!t.suggested && !t.dismissed);
+const suggestions = () => Object.values(S.tasks).filter(t=>t.suggested && !t.dismissed).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
 const meetings = () => Object.values(S.meetings);
 
 // ============ Persistencia (nube con respaldo local) ============
@@ -296,7 +297,7 @@ const ICON = {
 const VIEWS = [['dashboard','Inicio'],['proyectos','Proyectos'],['reuniones','Reuniones'],['pendientes','Pendientes'],['actividades','Actividades'],['calendario','Agenda'],['diagramas','Diagramas'],['reportes','Reportes']];
 let current = 'dashboard', openProject = null;
 function renderNav(){
-  const od = overdue().length;
+  const od = overdue().length + suggestions().length;
   $('#nav').innerHTML = VIEWS.map(([k,l]) =>
     `<a data-v="${k}" class="${current===k?'active':''}"><svg viewBox="0 0 24 24">${ICON[k]}</svg>${l}${k==='pendientes'&&od?`<span class="badge">${od}</span>`:''}</a>`).join('');
   document.querySelectorAll('#nav a').forEach(a => a.onclick = () => go(a.dataset.v));
@@ -325,6 +326,7 @@ function dashboard(m){
   m.innerHTML = `
   <div class="top"><div><h1>${h<12?'Buenos días':h<20?'Buenas tardes':'Buenas noches'}, Alexis</h1><div class="sub">${TODAY.toLocaleDateString('es-CL',{weekday:'long',day:'numeric',month:'long'})}</div></div>
   <div style="display:flex;gap:6px"><button class="btn" id="qSet">⚙ Ajustes</button><button class="btn primary" id="qTask">+ Nuevo pendiente</button></div></div>
+  ${suggestions().length ? `<div class="ai-box" style="margin:0 0 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><div style="flex:1"><b>📥 ${suggestions().length} pendiente(s) detectado(s) en tu Outlook</b><div class="muted" style="font-size:13px">Revísalos antes de agregarlos a tu lista.</div></div><button class="btn primary sm" id="goInbox">Revisar</button></div>` : ''}
   ${!projects().length ? `<div class="card empty">Aún no hay proyectos. Crea el primero en <b>Proyectos</b>.</div>` : ''}
   <div class="grid kpis k5">
     <div class="card kpi"><div class="l">Proyectos activos</div><div class="n">${act.length}</div></div>
@@ -354,6 +356,7 @@ function dashboard(m){
   $('#qTask').onclick = () => taskModal();
   $('#qSet').onclick = settingsModal;
   $('#kAct').onclick = () => go('actividades');
+  if($('#goInbox')) $('#goInbox').onclick = () => go('pendientes');
   document.querySelectorAll('[data-proj]').forEach(r => r.onclick = () => { go('proyectos'); openProject = r.dataset.proj; render(); });
   bindChecks();
   const ask = async () => {
@@ -489,6 +492,7 @@ function bindChecks(){ document.querySelectorAll('.chk').forEach(c => c.onclick 
 function pendientes(m){
   let ts = tasks().filter(t=>(!tFilter.project||t.project===tFilter.project) && (tFilter.state==='todos'||(tFilter.state==='abiertos'?!t.done:t.done)));
   m.innerHTML = `<div class="top"><div><h1>Pendientes</h1><div class="sub">Lo que sale de cada reunión llega aquí con su origen</div></div><div style="display:flex;gap:6px"><button class="btn" id="txl">Excel</button><button class="btn primary" id="nt">+ Nuevo pendiente</button></div></div>
+  ${outlookInbox()}
   <div class="toolbar"><select id="fp"><option value="">Todos los proyectos</option>${projOptions(tFilter.project)}</select>
   <select id="fs">${['abiertos','cerrados','todos'].map(s=>`<option ${tFilter.state===s?'selected':''}>${s}</option>`).join('')}</select></div>
   <div class="card tbl" style="padding:6px 8px">${mobile() ? taskList(ts) : `<table><thead><tr><th style="width:30px"></th><th>Pendiente</th><th>Proyecto</th><th>Responsable</th><th>Prioridad</th><th>Origen</th><th>Fecha</th><th></th></tr></thead><tbody>
@@ -499,6 +503,7 @@ function pendientes(m){
   $('#nt').onclick = () => taskModal();
   $('#txl').onclick = () => exportXlsx('pendientes','Pendientes');
   document.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => taskModal(S.tasks[b.dataset.edit]));
+  bindInbox();
   bindChecks();
 }
 function taskModal(t){
@@ -705,7 +710,7 @@ function calendario(m){
     });
     body += '</div>';
   }
-  m.innerHTML = head + body + `<div class="legend"><span style="--c:var(--accent)">Reuniones del portal</span><span style="--c:var(--blue)">Outlook</span><span style="--c:#6b46c1">Teams / Outlook trabajo (.ics)</span><span style="--c:var(--amber)">Vencimientos</span></div>` + olBanner();
+  m.innerHTML = head + body + `<div class="legend"><span style="--c:var(--accent)">Reuniones del portal</span><span style="--c:var(--blue)">Outlook</span><span style="--c:#6b46c1">Teams / Outlook trabajo</span><span style="--c:var(--amber)">Vencimientos</span></div>` + olBanner();
   $('#wp').onclick=()=>{weekOffset--;render();}; $('#wn').onclick=()=>{weekOffset++;render();}; $('#wt').onclick=()=>{weekOffset=0;render();};
   const al = $('#olAllow'); if(al) al.onclick = async () => { try{ await MCP.callTool('Microsoft 365','outlook_calendar_search',{query:'*',afterDateTime:isoOf(days[0]),beforeDateTime:isoOf(days[4]),limit:25,order:'oldest'}); olKey=''; render(); }catch(e){ toast('Sigue sin permiso'); } };
   $('#wa').onclick = meetModal;
@@ -1156,7 +1161,7 @@ async function importICS(){
     toast(`${evs.length} reuniones importadas · ${evs.filter(e=>e.join).length} con enlace de Teams`); render();
   }catch(e){ toast('No pude leer ese calendario'); }
 }
-const icsEvents = () => (S.ics.main && S.ics.main.events) || [];
+const icsEvents = () => { const a = (S.ics.main && S.ics.main.events) || [], b = (S.ics.outlook && S.ics.outlook.events) || []; const seen = new Set(b.map(e=>e.date+'|'+e.time+'|'+normTxt(e.title))); return [...b, ...a.filter(e=>!seen.has(e.date+'|'+e.time+'|'+normTxt(e.title)))]; };
 function joinBtn(url, small){ return url ? `<a class="btn ${small?'sm':''} join" href="${esc(url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Unirse a Teams</a>` : ''; }
 
 // ============ Visio (.vsdx) → diagrama ============
@@ -1293,6 +1298,8 @@ function settingsModal(){
     <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><button class="btn sm" id="st_bk">⬇ Descargar respaldo</button><button class="btn sm" id="st_rs">⇪ Restaurar respaldo</button></div>
     <div style="font-weight:600;margin:16px 0 6px">Actividades</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" id="st_lists">Editar listas (servicios, responsables…)</button><button class="btn sm" id="st_cli">Clientes (${clients().length})</button></div>
+    <div style="font-weight:600;margin:16px 0 6px">Revisión automática de Outlook</div>
+    <div class="muted" style="font-size:13px">${outlookSyncInfo()}${S.ics.outlook?` Calendario sincronizado: ${S.ics.outlook.events.length} reuniones.`:''}</div>
     <div style="font-weight:600;margin:16px 0 6px">Agenda Teams / Outlook</div>
     <div class="muted" style="font-size:13px">${ics?`Calendario importado: ${ics.events.length} reuniones (${esc(ics.file||'.ics')}, ${new Date(ics.importedAt).toLocaleString('es-CL',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}).`:'Aún no importas tu calendario de trabajo.'}</div>
     <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><button class="btn sm" id="st_ics">Importar calendario (.ics)</button><button class="btn sm" id="st_icshelp">¿Cómo exportarlo?</button></div>
@@ -1529,6 +1536,34 @@ function hoursModal(list){
   $('#hh_ok').onclick = async () => { $('#hh_ok').disabled=true; let n=0;
     for(const inp of document.querySelectorAll('[data-hh]')){ if(inp.value==='') continue; const v=parseFloat(inp.value.replace(',','.')); if(isNaN(v)||v<0) continue; const a=S.activities[inp.dataset.hh]; if(a){ await put('activity', {...a, horas:v}); n++; } }
     closeModal(); toast(n?`Horas guardadas en ${n} actividad(es)`:'No ingresaste horas'); render(); };
+}
+
+// ============ Bandeja "Por revisar desde Outlook" ============
+function outlookSyncInfo(){
+  const st = S.config.outlooksync;
+  if(!st) return 'La revisión automática de Outlook aún no se ha ejecutado.';
+  const when = st.lastRun ? new Date(st.lastRun).toLocaleString('es-CL',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '—';
+  const msg = {ok:`Última revisión: ${when}${st.account?` · ${esc(st.account)}`:''} · ${st.added||0} sugerencia(s) nuevas.`, cuenta_personal:`Última revisión: ${when}. El conector de Microsoft 365 está conectado a una cuenta que no es de Claro${st.account?` (${esc(st.account)})`:''}: reconéctalo con tu cuenta Claro para leer tu correo de trabajo.`, error:`Última revisión: ${when}. No se pudo leer Outlook${st.message?`: ${esc(st.message)}`:''}.`}[st.status] || `Última revisión: ${when}.`;
+  return msg;
+}
+function outlookInbox(){
+  const sg = suggestions(), st = S.config.outlooksync;
+  if(!sg.length) return `<div class="note" style="margin:0 0 14px">📥 ${outlookSyncInfo()}</div>`;
+  return `<div class="card" style="margin-bottom:16px;border-color:#bfe0da"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px"><h3 style="margin:0;flex:1">📥 Por revisar desde Outlook (${sg.length})</h3><button class="btn sm" id="ib_all">Aceptar todos</button></div>
+    <div class="muted" style="font-size:12px;margin-bottom:6px">${outlookSyncInfo()}</div>
+    ${sg.map(t=>`<div class="list-item" style="align-items:flex-start"><div style="flex:1;min-width:0"><b style="font-weight:500">${esc(t.text)}</b>
+      <div class="muted" style="font-size:12px">${esc(t.owner||'Por asignar')} · ${t.due?fmt(t.due):'sin fecha'} · ${esc(t.origin||'Outlook')}${t.sourceLink?` · <a class="plink" href="${esc(t.sourceLink)}" target="_blank" rel="noopener">Abrir en Outlook</a>`:''}</div>
+      ${t.evidence?`<div style="font-size:12.5px;margin-top:4px;border-left:3px solid var(--line);padding-left:8px;color:var(--muted)">“${esc(t.evidence)}”</div>`:''}</div>
+      <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;min-width:200px"><select data-ibp="${esc(t.id)}" style="max-width:220px;border:1px solid var(--line);border-radius:8px;padding:5px 8px"><option value="">Sin proyecto</option>${projects().map(p=>`<option value="${esc(p.id)}" ${t.project===p.id?'selected':''}>${esc(p.id)} · ${esc(p.name)}</option>`).join('')}</select>
+      <div style="display:flex;gap:6px"><button class="btn sm" data-ibx="${esc(t.id)}">Descartar</button><button class="btn sm" data-ibe="${esc(t.id)}">Editar</button><button class="btn primary sm" data-iba="${esc(t.id)}">Aceptar</button></div></div></div>`).join('')}</div>`;
+}
+function bindInbox(){
+  const proj = id => { const s = document.querySelector(`[data-ibp="${CSS.escape(id)}"]`); return s ? s.value : ''; };
+  const accept = async id => { const t = S.tasks[id]; if(!t) return; await put('task', {...t, project:proj(id)||t.project||'', suggested:false, acceptedAt:new Date().toISOString()}); };
+  document.querySelectorAll('[data-iba]').forEach(b => b.onclick = async () => { await accept(b.dataset.iba); toast('Agregado a tus pendientes'); render(); });
+  document.querySelectorAll('[data-ibx]').forEach(b => b.onclick = async () => { const t = S.tasks[b.dataset.ibx]; if(!t) return; await put('task', {...t, dismissed:true, suggested:false}); toast('Descartado'); render(); });
+  document.querySelectorAll('[data-ibe]').forEach(b => b.onclick = async () => { const id=b.dataset.ibe; const t = S.tasks[id]; if(!t) return; S.tasks[id] = {...t, project:proj(id)||t.project, suggested:false}; taskModal(S.tasks[id]); });
+  const all = $('#ib_all'); if(all) all.onclick = async () => { all.disabled = true; const ids = suggestions().map(t=>t.id); for(const id of ids) await accept(id); toast(`${ids.length} pendientes agregados`); render(); };
 }
 
 // ============ Respaldo completo (JSON) ============
