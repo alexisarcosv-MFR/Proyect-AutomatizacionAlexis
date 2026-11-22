@@ -9,7 +9,8 @@
 //
 // Variables de entorno (Cloudflare → Pages → Settings → Variables):
 //   DB                 enlace (binding) a la base D1               (obligatorio)
-//   ALLOWED_EMAILS     correos autorizados, separados por coma     (recomendado, junto a Cloudflare Access)
+//   PORTAL_PASSWORD    contraseña de ingreso al portal, como secreto (obligatorio salvo que uses ALLOWED_EMAILS)
+//   ALLOWED_EMAILS     correos autorizados con Cloudflare Access     (alternativa a la contraseña)
 //   ANTHROPIC_API_KEY  clave de la API de Claude, como secreto     (opcional)
 //   CLAUDE_MODEL       modelo de Claude (por defecto claude-sonnet-5-5)
 
@@ -23,6 +24,7 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS ix_act_fecha ON actividades(fecha_apertura)`,
   `CREATE TABLE IF NOT EXISTS items (kind TEXT NOT NULL, id TEXT NOT NULL, data TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (kind, id))`,
   `CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT)`,
+  `CREATE TABLE IF NOT EXISTS login_attempts (ip TEXT PRIMARY KEY, count INTEGER NOT NULL, first_at INTEGER NOT NULL)`,
   `CREATE VIEW IF NOT EXISTS v_horas_proyecto AS SELECT p.id, p.nombre AS proyecto, c.nombre AS cliente, p.tipo, p.estado, COUNT(a.id) AS actividades, ROUND(SUM(COALESCE(a.horas,0)),1) AS horas, ROUND(SUM(CASE WHEN a.horario='Fuera de horario' THEN COALESCE(a.horas,0) ELSE 0 END),1) AS horas_fuera_horario, MAX(COALESCE(NULLIF(a.fecha_cierre,''), a.fecha_apertura)) AS ultima_actividad FROM proyectos p LEFT JOIN clientes c ON c.id = p.cliente_id LEFT JOIN actividades a ON a.proyecto_id = p.id GROUP BY p.id`,
   `CREATE VIEW IF NOT EXISTS v_horas_mes AS SELECT substr(fecha_apertura,1,7) AS mes, responsable, COUNT(*) AS actividades, ROUND(SUM(COALESCE(horas,0)),1) AS horas FROM actividades GROUP BY mes, responsable`,
 ];
@@ -67,11 +69,59 @@ function remove(db, kind, id) {
 const bump = (db, now) => db.prepare(`INSERT INTO meta (k,v) VALUES ('rev',?1) ON CONFLICT(k) DO UPDATE SET v=?1`).bind(now + '-' + Math.random().toString(36).slice(2, 8));
 async function getRev(db) { const r = await db.prepare(`SELECT v FROM meta WHERE k='rev'`).first(); return r ? r.v : '0'; }
 
-function whoIs(request, env) {
+// ---- Autenticación: contraseña (cookie firmada) o Cloudflare Access por correo ----
+const enc = new TextEncoder();
+const b64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+async function hmac(secret, data) {
+  const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return b64u(await crypto.subtle.sign('HMAC', key, enc.encode(data)));
+}
+async function sha(s) { return b64u(await crypto.subtle.digest('SHA-256', enc.encode(s))); }
+function safeEq(a, b) { if (a.length !== b.length) return false; let r = 0; for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i); return r === 0; }
+const SESSION_DAYS = 30;
+const sessionSecret = env => 'pp-session|' + env.PORTAL_PASSWORD + '|' + (env.SESSION_SALT || '');
+async function makeSession(env) {
+  const payload = b64u(enc.encode(JSON.stringify({ exp: Date.now() + SESSION_DAYS * 864e5 })));
+  return payload + '.' + await hmac(sessionSecret(env), payload);
+}
+async function validSession(request, env) {
+  const m = (request.headers.get('cookie') || '').match(/(?:^|;\s*)pp_session=([^;]+)/);
+  if (!m) return false;
+  const [payload, sig] = m[1].split('.');
+  if (!payload || !sig || !safeEq(sig, await hmac(sessionSecret(env), payload))) return false;
+  try { const { exp } = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/'))); return exp > Date.now(); } catch (e) { return false; }
+}
+const cookie = (value, maxAge) => `pp_session=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
+
+async function whoIs(request, env) {
   const email = (request.headers.get('cf-access-authenticated-user-email') || '').toLowerCase();
   const allowed = (env.ALLOWED_EMAILS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-  if (!allowed.length) return { ok: true, email, protected: false };
-  return { ok: allowed.includes(email), email, protected: true };
+  if (env.PORTAL_PASSWORD) {
+    const ok = await validSession(request, env) && (!allowed.length || allowed.includes(email));
+    return { ok, email, protected: true, mode: 'password' };
+  }
+  if (allowed.length) return { ok: allowed.includes(email), email, protected: true, mode: 'access' };
+  return { ok: false, email, protected: false, mode: 'setup' };
+}
+
+async function login(request, env, db) {
+  if (!env.PORTAL_PASSWORD) return json({ error: 'Falta configurar PORTAL_PASSWORD' }, 503);
+  const ip = request.headers.get('cf-connecting-ip') || 'local';
+  const now = Date.now(), WINDOW = 15 * 60e3, MAX = 8;
+  const row = await db.prepare(`SELECT count, first_at FROM login_attempts WHERE ip=?1`).bind(ip).first();
+  if (row && now - row.first_at < WINDOW && row.count >= MAX) {
+    return json({ error: 'Demasiados intentos. Espera unos minutos.', retryAfter: Math.ceil((WINDOW - (now - row.first_at)) / 60e3) }, 429);
+  }
+  let body; try { body = await request.json(); } catch (e) { body = {}; }
+  const given = String((body && body.password) || '');
+  if (given && safeEq(await sha(given), await sha(env.PORTAL_PASSWORD))) {
+    await db.prepare(`DELETE FROM login_attempts WHERE ip=?1`).bind(ip).run();
+    return json({ ok: true }, 200, { 'set-cookie': cookie(await makeSession(env), SESSION_DAYS * 86400) });
+  }
+  if (!row || now - row.first_at >= WINDOW) await db.prepare(`INSERT INTO login_attempts (ip,count,first_at) VALUES (?1,1,?2) ON CONFLICT(ip) DO UPDATE SET count=1, first_at=?2`).bind(ip, now).run();
+  else await db.prepare(`UPDATE login_attempts SET count=count+1 WHERE ip=?1`).bind(ip).run();
+  await new Promise(r => setTimeout(r, 600));
+  return json({ error: 'Contraseña incorrecta' }, 401);
 }
 
 async function askClaude(env, prompt) {
@@ -90,15 +140,17 @@ export async function onRequest({ request, env, params }) {
   const parts = Array.isArray(params.route) ? params.route : [params.route].filter(Boolean);
   const [res, kind, rawId] = parts;
   const method = request.method;
-  const user = whoIs(request, env);
+  const user = await whoIs(request, env);
 
   if (res === 'health') {
-    return json({ app: 'portal-proyectos', version: 2, db: !!env.DB, ai: !!env.ANTHROPIC_API_KEY, user: user.email, protected: user.protected, allowed: user.ok });
+    return json({ app: 'portal-proyectos', version: 3, db: !!env.DB, ai: !!env.ANTHROPIC_API_KEY && user.ok, user: user.email, protected: user.protected, auth: user.mode, allowed: user.ok });
   }
-  if (!user.ok) return json({ error: 'forbidden' }, 403);
+  if (res === 'logout') return json({ ok: true }, 200, { 'set-cookie': cookie('', 0) });
   if (!env.DB) return json({ error: 'Falta enlazar la base D1 con el nombre DB' }, 500);
   const db = env.DB;
   await migrate(db);
+  if (res === 'login' && method === 'POST') return login(request, env, db);
+  if (!user.ok) return json({ error: user.mode === 'setup' ? 'Falta configurar PORTAL_PASSWORD' : 'no autorizado' }, user.mode === 'password' ? 401 : 403);
   const now = new Date().toISOString();
 
   if (res === 'items' && method === 'GET' && !kind) {

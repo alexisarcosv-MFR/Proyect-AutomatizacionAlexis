@@ -1,6 +1,6 @@
 # Publicar el portal en Cloudflare
 
-El portal queda en tu propia cuenta de Cloudflare (plan gratis), con una base de datos D1, acceso protegido con tu correo y publicación automática cada vez que se actualiza este repositorio en GitHub.
+El portal queda en tu propia cuenta de Cloudflare (plan gratis), con una base de datos D1, acceso con contraseña y publicación automática cada vez que se actualiza este repositorio en GitHub.
 
 ```
 GitHub (código)  ──push──▶  Cloudflare Pages  ──▶  https://portal-proyectos.pages.dev
@@ -8,7 +8,7 @@ GitHub (código)  ──push──▶  Cloudflare Pages  ──▶  https://port
                                    ├── /portal/index.html      (la aplicación)
                                    ├── /functions/api/…        (API)
                                    └── D1 "portal-proyectos"   (base de datos)
-                         Cloudflare Access: solo entra tu correo
+                         Ingreso con contraseña (sesión de 30 días)
 ```
 
 ## 1. Crear la base de datos D1
@@ -31,20 +31,21 @@ GitHub (código)  ──push──▶  Cloudflare Pages  ──▶  https://port
 En el proyecto de Pages → **Settings**:
 1. **Bindings → Add → D1 database**: Variable name `DB`, base `portal-proyectos`.
 2. **Variables and Secrets → Add**:
-   - `ALLOWED_EMAILS` = tu correo (si son varios, separados por coma).
+   - `PORTAL_PASSWORD` como **Secret** (tipo *Encrypt*): la contraseña con la que vas a entrar. Mínimo 12 caracteres.
    - *(Opcional)* `ANTHROPIC_API_KEY` como **Secret** para activar Claude dentro del portal (se cobra por uso en console.anthropic.com).
 3. **Deployments → … → Retry deployment** para que tome los cambios.
 
-## 4. Proteger el acceso (Cloudflare Access, gratis hasta 50 usuarios)
+## 4. (Opcional) Doble protección con Cloudflare Access
+Si además quieres un código por correo, agrega `ALLOWED_EMAILS` y configura Access:
 1. **Zero Trust → Access → Applications → Add an application → Self-hosted**.
 2. Dominio: `portal-proyectos.pages.dev` (y también `*.portal-proyectos.pages.dev` para las vistas previas).
 3. Política **Allow** → *Include* → **Emails** → tu correo.
 4. Método de ingreso: **One-time PIN** (te llega un código al correo).
 
-Sin este paso el portal muestra un aviso de "sin protección". Con `ALLOWED_EMAILS` la API además rechaza a cualquier correo que no esté en la lista.
+Sin `PORTAL_PASSWORD` ni `ALLOWED_EMAILS` el portal no muestra datos. Tras 8 intentos fallidos de contraseña desde la misma IP, el ingreso se bloquea 15 minutos. Cambiar la contraseña cierra todas las sesiones abiertas.
 
 ## 5. Cargar tus datos
-1. Abre la dirección del portal e ingresa con tu correo.
+1. Abre la dirección del portal e ingresa con tu contraseña.
 2. **⚙ Ajustes → Restaurar respaldo** y elige el archivo `Respaldo_Portal_….json`.
    El respaldo se descarga desde la versión de claude.ai en **⚙ Ajustes → Descargar respaldo**.
 

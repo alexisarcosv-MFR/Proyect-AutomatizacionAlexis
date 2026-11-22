@@ -402,8 +402,8 @@ function proyectos(m){
     <select id="pf_estado">${[['','Todos los estados'],['activos','Activos'],['En curso','En curso'],['En riesgo','En riesgo'],['Planificación','Planificación'],['Cerrado','Cerrados']].map(([v,l])=>`<option value="${v}" ${pF.estado===v?'selected':''}>${l}</option>`).join('')}</select>
     <select id="pf_sort">${[['id','Ordenar por ID'],['horas','Más horas'],['reciente','Actividad reciente']].map(([v,l])=>`<option value="${v}" ${pF.sort===v?'selected':''}>${l}</option>`).join('')}</select>
     <label class="muted" style="font-size:13px;display:flex;gap:6px;align-items:center"><input type="checkbox" id="pf_group" ${pF.group?'checked':''}> Agrupar por cliente</label></div>
-  <div class="card tbl" style="padding:6px 8px">${list.length?`<table><thead><tr><th>ID</th><th>Proyecto</th><th>Cliente</th><th>Estado</th><th>Actividades</th><th>Horas</th><th>Última</th><th>Pend.</th></tr></thead><tbody>${body}</tbody></table>`:'<div class="empty">Sin proyectos con estos filtros</div>'}</div>`;
-  document.querySelectorAll('tr.click').forEach(r => r.onclick = () => { openProject=r.dataset.id; render(); });
+  <div class="card tbl" style="padding:6px 8px">${!list.length?'<div class="empty">Sin proyectos con estos filtros</div>':mobile()?list.map(p=>{ const h=H[p.id]||{}; return `<div class="list-item click" data-id="${esc(p.id)}" style="cursor:pointer"><div style="flex:1;min-width:0"><b style="font-weight:500">${esc(p.name)}</b><div class="muted" style="font-size:12px"><span class="mono">${esc(p.id)}</span> · ${esc(clientName(p))} · ${h.n||0} act. · ${fmtH(h.h)}${h.last?' · '+fmt(h.last):''}</div></div>${statusPill(p.status)}</div>`; }).join(''):`<table><thead><tr><th>ID</th><th>Proyecto</th><th>Cliente</th><th>Estado</th><th>Actividades</th><th>Horas</th><th>Última</th><th>Pend.</th></tr></thead><tbody>${body}</tbody></table>`}</div>`;
+  document.querySelectorAll('tr.click[data-id], .list-item.click[data-id]').forEach(r => r.onclick = () => { openProject=r.dataset.id; render(); });
   [['client','pf_client'],['tipo','pf_tipo'],['estado','pf_estado'],['sort','pf_sort']].forEach(([k,id]) => $('#'+id).onchange = e => { pF[k]=e.target.value; render(); });
   $('#pf_group').onchange = e => { pF.group = e.target.checked; render(); };
   $('#newP').onclick = () => projectModal();
@@ -1291,8 +1291,8 @@ function settingsModal(){
   const url = mode==='server' ? location.origin : PORTAL_URL;
   modal(`<h3>Ajustes</h3>
     <div style="font-weight:600;margin:4px 0 6px">Acceso</div>
-    <div class="note" style="margin:0 0 6px">${mode==='server'?`Tu portal en Cloudflare: <span class="mono" style="font-size:11.5px;word-break:break-all">${esc(url)}</span><br>Ábrelo en cualquier navegador (PC o celular) e ingresa con tu correo autorizado.${SRV.user?`<br>Sesión: <b>${esc(SRV.user)}</b>`:''}`:`PC: <span class="mono" style="font-size:11.5px;word-break:break-all">${PORTAL_URL}</span><br>Celular: app Claude → Artifacts → <b>Portal de Proyectos</b> (fijado), o el mismo enlace.`}</div>
-    <button class="btn sm" id="st_copy">Copiar enlace</button>
+    <div class="note" style="margin:0 0 6px">${mode==='server'?`Tu portal en Cloudflare: <span class="mono" style="font-size:11.5px;word-break:break-all">${esc(url)}</span><br>Ábrelo en cualquier navegador (PC o celular) e ingresa con tu contraseña.${SRV.user?`<br>Sesión: <b>${esc(SRV.user)}</b>`:''}`:`PC: <span class="mono" style="font-size:11.5px;word-break:break-all">${PORTAL_URL}</span><br>Celular: app Claude → Artifacts → <b>Portal de Proyectos</b> (fijado), o el mismo enlace.`}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" id="st_copy">Copiar enlace</button>${mode==='server'&&SRV.auth==='password'?'<button class="btn sm" id="st_out">Cerrar sesión</button>':''}</div>
     <div style="font-weight:600;margin:16px 0 6px">Respaldo de datos</div>
     <div class="muted" style="font-size:13px">Descarga todo (proyectos, actividades, clientes, diagramas…) en un archivo, o restaura uno.</div>
     <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><button class="btn sm" id="st_bk">⬇ Descargar respaldo</button><button class="btn sm" id="st_rs">⇪ Restaurar respaldo</button></div>
@@ -1308,6 +1308,7 @@ function settingsModal(){
     ${MCP?`<div style="font-weight:600;margin:16px 0 6px">OneDrive</div><div class="muted" style="font-size:13px">${od?`Los archivos se guardan en <a href="${esc(od.webUrl)}" target="_blank" rel="noopener">OneDrive › Portal de Proyectos</a>.`:'Carpeta no configurada.'}</div>`:''}
     <div style="text-align:right;margin-top:16px"><button class="btn primary" data-close>Listo</button></div>`);
   $('#st_copy').onclick = async () => { try{ await navigator.clipboard.writeText(url); toast('Enlace copiado'); }catch(e){ toast('No se pudo copiar'); } };
+  if($('#st_out')) $('#st_out').onclick = logout;
   $('#st_bk').onclick = () => { closeModal(); exportBackup(); };
   $('#st_rs').onclick = () => { closeModal(); importBackup(); };
   $('#st_lists').onclick = listsModal;
@@ -1603,7 +1604,8 @@ const saveOutbox = () => { try{ localStorage.setItem('pp-outbox', JSON.stringify
 async function srvSend(op){
   const url = '/api/items/'+encodeURIComponent(op.kind)+'/'+encodeURIComponent(op.id);
   const r = await fetch(url, op.del ? {method:'DELETE'} : {method:'PUT', headers:{'content-type':'application/json'}, body:JSON.stringify(op.obj)});
-  if(r.status===401 || r.status===403){ toast('Tu sesión expiró: recarga la página para volver a entrar'); throw new Error('auth'); }
+  if(r.status===401){ loginScreen('Tu sesión expiró. Ingresa de nuevo.'); throw new Error('auth'); }
+  if(r.status===403){ toast('No autorizado'); throw new Error('auth'); }
   if(!r.ok) throw new Error('http '+r.status);
 }
 async function srvQueue(op){
@@ -1623,6 +1625,7 @@ async function serverLoad(force){
   if(SRV.outbox.length) await flushOutbox();
   const r = await fetch('/api/items'+(force?'':'?rev='+encodeURIComponent(SRV.rev)), {cache:'no-store'});
   if(r.status===304) return;
+  if(r.status===401){ loginScreen('Tu sesión expiró. Ingresa de nuevo.'); return; }
   if(!r.ok) throw new Error('http '+r.status);
   const data = await r.json();
   if(!force && data.rev===SRV.rev) return;
@@ -1645,17 +1648,38 @@ function makeServerAI(){
 function browserDownloads(){
   return { save: async ({filename, data}) => { const blob = data instanceof Blob ? data : new Blob([data]); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url), 4000); return {status:'saved'}; } };
 }
+function loginScreen(msg){
+  if(SRV.timer){ clearInterval(SRV.timer); SRV.timer = null; }
+  document.querySelector('aside').style.display = 'none';
+  const m = document.getElementById('main');
+  m.innerHTML = `<div style="min-height:80vh;display:grid;place-items:center"><form id="lg" class="card" style="width:min(380px,92vw);padding:28px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px"><div style="width:34px;height:34px;border-radius:9px;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:600">PP</div><div><b style="font-size:17px">Portal de Proyectos</b><div class="muted" style="font-size:13px">Alexis Arcos · Área Soporte</div></div></div>
+    <div class="field"><label>Contraseña</label><input type="password" id="lg_pw" autocomplete="current-password" autofocus style="font-size:16px"></div>
+    <div id="lg_err" style="color:var(--warn);font-size:13px;min-height:18px;margin-bottom:8px">${esc(msg||'')}</div>
+    <button class="btn primary" id="lg_ok" style="width:100%;padding:11px">Ingresar</button>
+    <div class="muted" style="font-size:12px;margin-top:12px;text-align:center">La sesión se mantiene 30 días en este dispositivo.</div></form></div>`;
+  $('#lg').onsubmit = async e => { e.preventDefault(); const pw = $('#lg_pw').value; if(!pw) return; const b = $('#lg_ok'); b.disabled = true; b.textContent = 'Ingresando…';
+    try{ const r = await fetch('/api/login', {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({password:pw})}); const d = await r.json().catch(()=>({}));
+      if(r.ok){ location.reload(); return; }
+      $('#lg_err').textContent = r.status===429 ? `Demasiados intentos. Espera ${d.retryAfter||15} minutos.` : (d.error||'No se pudo ingresar'); }
+    catch(err){ $('#lg_err').textContent = 'Sin conexión con el servidor'; }
+    b.disabled = false; b.textContent = 'Ingresar'; $('#lg_pw').select(); };
+}
+async function logout(){ try{ await fetch('/api/logout', {method:'POST'}); }catch(e){} try{ localStorage.removeItem('pp-server-cache'); localStorage.removeItem('pp-outbox'); }catch(e){} location.reload(); }
 async function tryServer(){
   if(window.claude || !/^https?:$/.test(location.protocol)) return false;
   let h; try{ const r = await fetch('/api/health', {cache:'no-store'}); if(!r.ok) return false; h = await r.json(); }catch(e){ return false; }
   if(!h || h.app!=='portal-proyectos') return false;
-  if(h.allowed===false){ document.getElementById('main').innerHTML = '<div class="empty"><h2>Acceso no autorizado</h2><p>Tu correo no está en la lista de usuarios permitidos de este portal.</p></div>'; return true; }
+  if(h.allowed===false){
+    if(h.auth==='password'){ loginScreen(); return true; }
+    document.getElementById('main').innerHTML = h.auth==='setup' ? '<div class="empty"><h2>Portal sin contraseña</h2><p>Falta configurar la variable secreta <b>PORTAL_PASSWORD</b> en Cloudflare (Settings → Variables and Secrets) y volver a publicar.</p></div>' : '<div class="empty"><h2>Acceso no autorizado</h2><p>Tu correo no está en la lista de usuarios permitidos de este portal.</p></div>';
+    return true; }
   mode = 'server'; SRV.user = h.user||''; SRV.protected = !!h.protected;
   DL = browserDownloads();
   if(h.ai) AI = makeServerAI();
   try{ const c = JSON.parse(localStorage.getItem('pp-server-cache')); if(c) Object.assign(S, c); }catch(e){}
   setSync('server', h.user ? `Conectado como ${h.user}` : 'Guardado en tu servidor Cloudflare');
-  if(!h.protected) setTimeout(()=>toast('⚠ Portal sin protección de acceso: configura Cloudflare Access y ALLOWED_EMAILS'), 1500);
+  SRV.auth = h.auth;
   render();
   try{ await serverLoad(true); }catch(e){ setSync('local', 'No se pudo leer el servidor; mostrando copia local'); }
   SRV.timer = setInterval(()=>{ if(!document.hidden) serverLoad(false).catch(()=>{}); }, 20000);
